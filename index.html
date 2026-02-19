@@ -5,6 +5,16 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AGENTS_BRIEFING</title>
+    <script>
+      // Restore path from 404.html redirect (?p=/youtube/some-id)
+      (function () {
+        var p = new URLSearchParams(window.location.search).get('p');
+        if (p) {
+          var h = new URLSearchParams(window.location.search).get('h') || '';
+          window.history.replaceState(null, '', p + h);
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

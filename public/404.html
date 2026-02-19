@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<script>
+  // GitHub Pages SPA redirect trick
+  // Converts /youtube/some-id → /?p=/youtube/some-id then index.html restores it
+  var path = window.location.pathname;
+  var search = window.location.search;
+  var hash = window.location.hash;
+  window.location.replace(
+    '/?p=' + encodeURIComponent(path + search) + (hash ? '&h=' + encodeURIComponent(hash) : '')
+  );
+</script>
+</head>
+<body></body>
+</html>
