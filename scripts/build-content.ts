@@ -1,0 +1,186 @@
+import { glob } from 'glob';
+import matter from 'gray-matter';
+import { marked } from 'marked';
+import fs from 'fs';
+import path from 'path';
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+type Tab = 'youtube' | 'community' | 'research' | 'daily';
+type Format = 'SINGLE' | 'BATCH';
+
+interface ContentEntry {
+  id: string;
+  tab: Tab;
+  type: Format;
+  title: string;
+  date: string;
+  tags: string[];
+  html: string;
+  summary: string;
+  // SINGLE-specific
+  videoId?: string;
+  channel?: string;
+  duration?: string;
+  // BATCH-specific
+  itemCount?: number;
+  // research-specific
+  ticker?: string;
+  verdict?: string;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function slugify(filePath: string): string {
+  return filePath
+    .replace(/[/\\]/g, '-')
+    .replace(/\.md$/, '')
+    .replace(/[^a-zA-Z0-9가-힣_-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function tabFromPath(filePath: string): Tab {
+  const normalized = filePath.replace(/\\/g, '/');
+  if (normalized.includes('/youtube/')) return 'youtube';
+  if (normalized.includes('/community/')) return 'community';
+  if (normalized.includes('/research/')) return 'research';
+  if (normalized.includes('/daily/')) return 'daily';
+  return 'youtube';
+}
+
+function transformWikiLinks(html: string): string {
+  // [[file|display]] or [[file]]
+  return html.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_match, _file, display) => {
+    const label = display ?? _file;
+    return `<span class="wiki-link">${label}</span>`;
+  });
+}
+
+function extractSummary(text: string, maxLen = 160): string {
+  // Strip markdown, take first meaningful paragraph
+  const clean = text
+    .replace(/^#{1,6}\s+.*/gm, '')
+    .replace(/!\[.*?\]\(.*?\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[*_`~]/g, '')
+    .replace(/^[-*>]\s+/gm, '')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+  const first = clean.split('\n').find(l => l.trim().length > 20) ?? clean;
+  return first.length > maxLen ? first.slice(0, maxLen - 1) + '…' : first;
+}
+
+// Count ## sections in BATCH file
+function countBatchItems(body: string): number {
+  return (body.match(/^##\s+/gm) ?? []).length;
+}
+
+async function processFile(filePath: string): Promise<ContentEntry | null> {
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  const tab = tabFromPath(filePath);
+  const id = slugify(path.relative(path.join(process.cwd(), 'content'), filePath));
+
+  // Detect format
+  const hasFrontmatterTitle = /^---[\s\S]+?title:/.test(raw);
+  const hasSeparator = /\n---\n/.test(raw);
+  const format: Format = hasFrontmatterTitle ? 'SINGLE' : 'BATCH';
+
+  const { data: fm, content: body } = matter(raw);
+
+  // ── SINGLE ─────────────────────────────────────────────────────────────
+  if (format === 'SINGLE') {
+    const htmlRaw = await marked(body, { gfm: true });
+    const html = transformWikiLinks(htmlRaw);
+
+    return {
+      id,
+      tab,
+      type: 'SINGLE',
+      title: String(fm.title ?? path.basename(filePath, '.md')),
+      date: String(fm.upload_date ?? fm.date ?? ''),
+      tags: Array.isArray(fm.tags) ? fm.tags.map(String) : [],
+      html,
+      summary: extractSummary(body),
+      videoId: fm.video_id ? String(fm.video_id) : undefined,
+      channel: fm.channel ? String(fm.channel) : undefined,
+      duration: fm.duration ? String(fm.duration) : undefined,
+      ticker: fm.ticker ? String(fm.ticker) : undefined,
+      verdict: fm.verdict ? String(fm.verdict) : undefined,
+    };
+  }
+
+  // ── BATCH ──────────────────────────────────────────────────────────────
+  // Extract title from first H1 line
+  const h1Match = body.match(/^#\s+(.+)/m);
+  const title = h1Match ? h1Match[1].trim() : path.basename(filePath, '.md');
+
+  // Extract date from title pattern like "26.02.09 ~ 02.14" or frontmatter
+  const dateMatch = title.match(/(\d{2}\.\d{2}\.\d{2})/);
+  const date = fm.date
+    ? String(fm.date)
+    : dateMatch
+    ? '20' + dateMatch[1].replace(/\./g, '-')
+    : '';
+
+  const htmlRaw = await marked(body, { gfm: true });
+  const html = transformWikiLinks(htmlRaw);
+
+  return {
+    id,
+    tab,
+    type: 'BATCH',
+    title,
+    date,
+    tags: Array.isArray(fm.tags) ? fm.tags.map(String) : [],
+    html,
+    summary: extractSummary(body),
+    itemCount: hasSeparator ? countBatchItems(body) : 1,
+    channel: fm.channel ? String(fm.channel) : undefined,
+  };
+}
+
+// ── Main ───────────────────────────────────────────────────────────────────
+
+async function main() {
+  const contentDir = path.join(process.cwd(), 'content');
+  if (!fs.existsSync(contentDir)) {
+    console.log('content/ directory not found, creating empty manifest');
+    const outDir = path.join(process.cwd(), 'src', 'generated');
+    fs.mkdirSync(outDir, { recursive: true });
+    fs.writeFileSync(path.join(outDir, 'content-manifest.json'), JSON.stringify([], null, 2));
+    return;
+  }
+
+  const files = await glob('**/*.md', { cwd: contentDir, absolute: true });
+  console.log(`Found ${files.length} markdown files`);
+
+  const entries: ContentEntry[] = [];
+  for (const f of files) {
+    try {
+      const entry = await processFile(f);
+      if (entry) entries.push(entry);
+    } catch (err) {
+      console.error(`Error processing ${f}:`, err);
+    }
+  }
+
+  // Sort by date descending, then by title
+  entries.sort((a, b) => {
+    if (b.date && a.date) return b.date.localeCompare(a.date);
+    if (b.date) return 1;
+    if (a.date) return -1;
+    return a.title.localeCompare(b.title);
+  });
+
+  const outDir = path.join(process.cwd(), 'src', 'generated');
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, 'content-manifest.json');
+  fs.writeFileSync(outPath, JSON.stringify(entries, null, 2));
+  console.log(`Wrote ${entries.length} entries to ${outPath}`);
+}
+
+main().catch(err => {
+  console.error(err);
+  process.exit(1);
+});

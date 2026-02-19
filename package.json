@@ -1,0 +1,28 @@
+{
+  "name": "rollrat-github-io",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build:content && vite",
+    "build:content": "tsx scripts/build-content.ts",
+    "build": "npm run build:content && tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/node": "^22.10.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "glob": "^11.0.0",
+    "gray-matter": "^4.0.3",
+    "marked": "^15.0.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}

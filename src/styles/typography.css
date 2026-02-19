@@ -1,0 +1,16 @@
+/* ═══ FONTS ═══ */
+@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Space+Mono:wght@400;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+
+body {
+  font-family: 'Noto Sans KR', 'Space Mono', monospace;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.75;
+  overflow-x: hidden;
+  transition: background 0.3s, color 0.3s;
+}
+
+::selection {
+  background: var(--green-mid);
+  color: var(--white);
+}

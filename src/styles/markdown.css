@@ -1,0 +1,154 @@
+/* ═══ MARKDOWN CONTENT ═══ */
+.md-content {
+  font-size: 14px;
+  line-height: 1.85;
+  color: var(--text);
+}
+
+.md-content h1,
+.md-content h2,
+.md-content h3,
+.md-content h4 {
+  color: var(--white);
+  font-family: 'Space Mono', monospace;
+  margin: 1.5em 0 0.6em;
+  letter-spacing: -0.2px;
+}
+
+.md-content h1 {
+  font-family: 'Silkscreen', monospace;
+  font-size: 18px;
+  letter-spacing: 1px;
+  color: var(--green);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.md-content h2 {
+  font-size: 15px;
+  color: var(--bright);
+  border-left: 3px solid var(--green);
+  padding-left: 12px;
+  margin-left: -15px;
+}
+
+.md-content h3 {
+  font-size: 13px;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.md-content p {
+  margin-bottom: 0.85em;
+}
+
+.md-content strong {
+  color: var(--green);
+  font-weight: 500;
+}
+
+.md-content em {
+  color: var(--bright);
+  font-style: normal;
+}
+
+.md-content a {
+  color: var(--green);
+  text-decoration: none;
+  border-bottom: 1px solid var(--green-mid);
+  transition: border-color 0.2s;
+}
+
+.md-content a:hover {
+  border-color: var(--green);
+}
+
+.md-content blockquote {
+  border-left: 3px solid var(--green);
+  padding: 6px 16px;
+  margin: 0.8em 0;
+  background: var(--green-lo);
+  color: var(--dim);
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+}
+
+.md-content code {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  background: var(--surface2);
+  padding: 1px 6px;
+  color: var(--green);
+  border: 1px solid var(--line);
+}
+
+.md-content pre {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 16px;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.md-content pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.md-content ul,
+.md-content ol {
+  padding-left: 1.4em;
+  margin-bottom: 0.85em;
+}
+
+.md-content li {
+  margin-bottom: 0.35em;
+}
+
+.md-content ul > li::marker {
+  color: var(--green);
+  content: '› ';
+}
+
+.md-content hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 2em 0;
+}
+
+.md-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  margin: 1em 0;
+}
+
+.md-content th {
+  background: var(--surface2);
+  color: var(--bright);
+  font-weight: 700;
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.md-content td {
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+
+.md-content tr:hover td {
+  background: var(--green-lo);
+}
+
+.md-content .wiki-link {
+  color: var(--bright);
+  border-bottom: 1px dashed var(--dim);
+  cursor: default;
+}
