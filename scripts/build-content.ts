@@ -227,6 +227,10 @@ async function main() {
       label: getTabLabel(dirName),
       hasSubgroups,
     };
+  }).sort((a, b) => {
+    const countA = entries.filter(e => e.tab === a.id).length;
+    const countB = entries.filter(e => e.tab === b.id).length;
+    return countB - countA;
   });
 
   const manifest: Manifest = { tabs, entries };
