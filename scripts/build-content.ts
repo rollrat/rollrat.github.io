@@ -56,6 +56,14 @@ function getTabLabel(folderName: string): string {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+function normalizeDate(value: unknown): string {
+  if (!value) return '';
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+  return String(value);
+}
+
 function slugify(filePath: string): string {
   return filePath
     .replace(/[/\\]/g, '-')
@@ -132,7 +140,7 @@ async function processFile(filePath: string, contentDir: string): Promise<Conten
       subgroup,
       type: 'SINGLE',
       title: String(fm.title ?? path.basename(filePath, '.md')),
-      date: String(fm.upload_date ?? fm.date ?? ''),
+      date: normalizeDate(fm.upload_date ?? fm.date),
       tags: Array.isArray(fm.tags) ? fm.tags.map(String) : [],
       html,
       summary: extractSummary(body),
@@ -152,7 +160,7 @@ async function processFile(filePath: string, contentDir: string): Promise<Conten
   // Extract date from title pattern like "26.02.09 ~ 02.14" or frontmatter
   const dateMatch = title.match(/(\d{2}\.\d{2}\.\d{2})/);
   const date = fm.date
-    ? String(fm.date)
+    ? normalizeDate(fm.date)
     : dateMatch
     ? '20' + dateMatch[1].replace(/\./g, '-')
     : '';
