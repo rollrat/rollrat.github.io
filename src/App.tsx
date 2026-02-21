@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate } from 'react-router-dom';
-import type { Tab, ContentEntry } from './types';
+import type { Tab, Manifest } from './types';
 import { BackgroundLayers } from './components/layout/BackgroundLayers';
 import { TopBar } from './components/layout/TopBar';
 import { TabNav } from './components/layout/TabNav';
@@ -9,9 +9,7 @@ import { ContentDetail } from './components/content/ContentDetail';
 import { Footer } from './components/layout/Footer';
 import manifestData from './generated/content-manifest.json';
 
-const manifest = manifestData as unknown as ContentEntry[];
-
-const VALID_TABS: Tab[] = ['youtube', 'community', 'research', 'daily'];
+const manifest = manifestData as unknown as Manifest;
 
 function getStoredTheme(): 'dark' | 'light' {
   try {
@@ -27,7 +25,9 @@ function AppShell({ theme, onToggleTheme }: { theme: 'dark' | 'light'; onToggleT
   const { tab, id } = useParams<{ tab?: string; id?: string }>();
   const navigate = useNavigate();
 
-  const activeTab = (VALID_TABS.includes(tab as Tab) ? tab : 'youtube') as Tab;
+  const validTabIds = manifest.tabs.map(t => t.id);
+  const defaultTab = validTabIds[0] ?? 'youtube';
+  const activeTab: Tab = (tab && validTabIds.includes(tab) ? tab : defaultTab);
 
   function handleTabChange(t: Tab) {
     navigate(`/${t}`);
@@ -42,19 +42,19 @@ function AppShell({ theme, onToggleTheme }: { theme: 'dark' | 'light'; onToggleT
   }
 
   const decodedId = id ? decodeURIComponent(id) : null;
-  const selectedEntry = decodedId ? manifest.find(e => e.id === decodedId) : null;
+  const selectedEntry = decodedId ? manifest.entries.find(e => e.id === decodedId) : null;
 
   return (
     <>
       <BackgroundLayers />
       <main>
         <TopBar theme={theme} onToggleTheme={onToggleTheme} />
-        <TabNav activeTab={activeTab} entries={manifest} onTabChange={handleTabChange} />
+        <TabNav activeTab={activeTab} tabs={manifest.tabs} entries={manifest.entries} onTabChange={handleTabChange} />
         <div className="content-area">
           {selectedEntry ? (
             <ContentDetail entry={selectedEntry} onBack={handleBack} />
           ) : (
-            <ContentList tab={activeTab} entries={manifest} onSelect={handleSelect} />
+            <ContentList tab={activeTab} tabs={manifest.tabs} entries={manifest.entries} onSelect={handleSelect} />
           )}
         </div>
         <Footer />
@@ -77,13 +77,15 @@ export default function App() {
     setTheme(t => (t === 'dark' ? 'light' : 'dark'));
   }
 
+  const defaultTab = manifest.tabs[0]?.id ?? 'youtube';
+
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/youtube" replace />} />
+        <Route path="/" element={<Navigate to={`/${defaultTab}`} replace />} />
         <Route path="/:tab" element={<AppShell theme={theme} onToggleTheme={toggleTheme} />} />
         <Route path="/:tab/:id" element={<AppShell theme={theme} onToggleTheme={toggleTheme} />} />
-        <Route path="*" element={<Navigate to="/youtube" replace />} />
+        <Route path="*" element={<Navigate to={`/${defaultTab}`} replace />} />
       </Routes>
     </BrowserRouter>
   );

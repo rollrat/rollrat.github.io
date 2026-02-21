@@ -1,35 +1,28 @@
-import type { Tab, ContentEntry } from '../../types';
-import { TAB_LABELS } from '../../types';
-
-const TAB_ORDER: Tab[] = ['youtube', 'community', 'research', 'daily'];
+import type { Tab, TabMeta, ContentEntry } from '../../types';
 
 interface TabNavProps {
   activeTab: Tab;
+  tabs: TabMeta[];
   entries: ContentEntry[];
   onTabChange: (tab: Tab) => void;
 }
 
-export function TabNav({ activeTab, entries, onTabChange }: TabNavProps) {
-  const counts = TAB_ORDER.reduce<Record<Tab, number>>(
-    (acc, tab) => {
-      acc[tab] = entries.filter(e => e.tab === tab).length;
-      return acc;
-    },
-    { youtube: 0, community: 0, research: 0, daily: 0 }
-  );
-
+export function TabNav({ activeTab, tabs, entries, onTabChange }: TabNavProps) {
   return (
     <div className="tabnav">
-      {TAB_ORDER.map(tab => (
-        <button
-          key={tab}
-          className={`tabnav-btn${activeTab === tab ? ' active' : ''}`}
-          onClick={() => onTabChange(tab)}
-        >
-          {TAB_LABELS[tab]}
-          <span className="tabnav-count">{counts[tab]}</span>
-        </button>
-      ))}
+      {tabs.map(tabMeta => {
+        const count = entries.filter(e => e.tab === tabMeta.id).length;
+        return (
+          <button
+            key={tabMeta.id}
+            className={`tabnav-btn${activeTab === tabMeta.id ? ' active' : ''}`}
+            onClick={() => onTabChange(tabMeta.id)}
+          >
+            {tabMeta.label}
+            <span className="tabnav-count">{count}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

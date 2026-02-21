@@ -6,12 +6,12 @@ import path from 'path';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type Tab = 'youtube' | 'community' | 'research' | 'daily';
 type Format = 'SINGLE' | 'BATCH';
 
 interface ContentEntry {
   id: string;
-  tab: Tab;
+  tab: string;
+  subgroup?: string;
   type: Format;
   title: string;
   date: string;
@@ -29,6 +29,31 @@ interface ContentEntry {
   verdict?: string;
 }
 
+interface TabMeta {
+  id: string;
+  label: string;
+  hasSubgroups: boolean;
+}
+
+interface Manifest {
+  tabs: TabMeta[];
+  entries: ContentEntry[];
+}
+
+// ── Tab label mapping ────────────────────────────────────────────────────────
+
+const TAB_LABEL_MAP: Record<string, string> = {
+  youtube: '유튜브 요약',
+  community: '커뮤니티',
+  research: '리서치',
+  daily: '일일 요약',
+  'reddit-saas': 'Reddit SaaS',
+};
+
+function getTabLabel(folderName: string): string {
+  return TAB_LABEL_MAP[folderName] ?? folderName;
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function slugify(filePath: string): string {
@@ -40,13 +65,20 @@ function slugify(filePath: string): string {
     .replace(/^-|-$/g, '');
 }
 
-function tabFromPath(filePath: string): Tab {
-  const normalized = filePath.replace(/\\/g, '/');
-  if (normalized.includes('/youtube/')) return 'youtube';
-  if (normalized.includes('/community/')) return 'community';
-  if (normalized.includes('/research/')) return 'research';
-  if (normalized.includes('/daily/')) return 'daily';
-  return 'youtube';
+function tabFromPath(filePath: string, contentDir: string): string {
+  const relative = path.relative(contentDir, filePath).replace(/\\/g, '/');
+  const parts = relative.split('/');
+  return parts[0];
+}
+
+function subgroupFromPath(filePath: string, contentDir: string): string | undefined {
+  const relative = path.relative(contentDir, filePath).replace(/\\/g, '/');
+  const parts = relative.split('/');
+  // parts[0] = tab, parts[1] = subgroup or file, parts[2] = file (if subgroup exists)
+  if (parts.length >= 3) {
+    return parts[1];
+  }
+  return undefined;
 }
 
 function transformWikiLinks(html: string): string {
@@ -76,10 +108,11 @@ function countBatchItems(body: string): number {
   return (body.match(/^##\s+/gm) ?? []).length;
 }
 
-async function processFile(filePath: string): Promise<ContentEntry | null> {
+async function processFile(filePath: string, contentDir: string): Promise<ContentEntry | null> {
   const raw = fs.readFileSync(filePath, 'utf-8');
-  const tab = tabFromPath(filePath);
-  const id = slugify(path.relative(path.join(process.cwd(), 'content'), filePath));
+  const tab = tabFromPath(filePath, contentDir);
+  const subgroup = subgroupFromPath(filePath, contentDir);
+  const id = slugify(path.relative(contentDir, filePath));
 
   // Detect format
   const hasFrontmatterTitle = /^---[\s\S]+?title:/.test(raw);
@@ -96,6 +129,7 @@ async function processFile(filePath: string): Promise<ContentEntry | null> {
     return {
       id,
       tab,
+      subgroup,
       type: 'SINGLE',
       title: String(fm.title ?? path.basename(filePath, '.md')),
       date: String(fm.upload_date ?? fm.date ?? ''),
@@ -129,6 +163,7 @@ async function processFile(filePath: string): Promise<ContentEntry | null> {
   return {
     id,
     tab,
+    subgroup,
     type: 'BATCH',
     title,
     date,
@@ -148,7 +183,8 @@ async function main() {
     console.log('content/ directory not found, creating empty manifest');
     const outDir = path.join(process.cwd(), 'src', 'generated');
     fs.mkdirSync(outDir, { recursive: true });
-    fs.writeFileSync(path.join(outDir, 'content-manifest.json'), JSON.stringify([], null, 2));
+    const emptyManifest: Manifest = { tabs: [], entries: [] };
+    fs.writeFileSync(path.join(outDir, 'content-manifest.json'), JSON.stringify(emptyManifest, null, 2));
     return;
   }
 
@@ -158,7 +194,7 @@ async function main() {
   const entries: ContentEntry[] = [];
   for (const f of files) {
     try {
-      const entry = await processFile(f);
+      const entry = await processFile(f, contentDir);
       if (entry) entries.push(entry);
     } catch (err) {
       console.error(`Error processing ${f}:`, err);
@@ -173,11 +209,34 @@ async function main() {
     return a.title.localeCompare(b.title);
   });
 
+  // Build tab metadata by scanning top-level directories
+  const topLevelDirs = fs.readdirSync(contentDir, { withFileTypes: true })
+    .filter(d => d.isDirectory())
+    .map(d => d.name);
+
+  const tabs: TabMeta[] = topLevelDirs.map(dirName => {
+    const dirPath = path.join(contentDir, dirName);
+    const items = fs.readdirSync(dirPath, { withFileTypes: true });
+    const hasFiles = items.some(item => item.isFile() && item.name.endsWith('.md'));
+    const hasSubDirs = items.some(item => item.isDirectory());
+    // hasSubgroups = only subdirectories (no top-level .md files)
+    const hasSubgroups = hasSubDirs && !hasFiles;
+
+    return {
+      id: dirName,
+      label: getTabLabel(dirName),
+      hasSubgroups,
+    };
+  });
+
+  const manifest: Manifest = { tabs, entries };
+
   const outDir = path.join(process.cwd(), 'src', 'generated');
   fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, 'content-manifest.json');
-  fs.writeFileSync(outPath, JSON.stringify(entries, null, 2));
+  fs.writeFileSync(outPath, JSON.stringify(manifest, null, 2));
   console.log(`Wrote ${entries.length} entries to ${outPath}`);
+  console.log(`Tabs: ${tabs.map(t => `${t.id}(hasSubgroups=${t.hasSubgroups})`).join(', ')}`);
 }
 
 main().catch(err => {

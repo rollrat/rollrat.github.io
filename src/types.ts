@@ -1,9 +1,10 @@
-export type Tab = 'youtube' | 'community' | 'research' | 'daily';
+export type Tab = string;
 export type Format = 'SINGLE' | 'BATCH';
 
 export interface ContentEntry {
   id: string;
   tab: Tab;
+  subgroup?: string;
   type: Format;
   title: string;
   date: string;
@@ -18,9 +19,13 @@ export interface ContentEntry {
   verdict?: string;
 }
 
-export const TAB_LABELS: Record<Tab, string> = {
-  youtube: '유튜브 요약',
-  community: '커뮤니티',
-  research: '리서치',
-  daily: '일일 요약',
-};
+export interface TabMeta {
+  id: string;
+  label: string;
+  hasSubgroups: boolean;
+}
+
+export interface Manifest {
+  tabs: TabMeta[];
+  entries: ContentEntry[];
+}
