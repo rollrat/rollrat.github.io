@@ -3,6 +3,7 @@ import matter from 'gray-matter';
 import { marked } from 'marked';
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,19 @@ function getTabLabel(folderName: string): string {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+function getGitAddedTimestamp(filePath: string): number {
+  try {
+    const result = execSync(
+      `git log --diff-filter=A --format="%ct" -- "${filePath}"`,
+      { encoding: 'utf-8' }
+    ).trim();
+    const ts = parseInt(result.split('\n')[0], 10);
+    return isNaN(ts) ? 0 : ts;
+  } catch {
+    return 0;
+  }
+}
 
 function normalizeDate(value: unknown): string {
   if (!value) return '';
@@ -200,20 +214,26 @@ async function main() {
   console.log(`Found ${files.length} markdown files`);
 
   const entries: ContentEntry[] = [];
+  const addedTimes = new Map<string, number>();
+
   for (const f of files) {
     try {
       const entry = await processFile(f, contentDir);
-      if (entry) entries.push(entry);
+      if (entry) {
+        addedTimes.set(entry.id, getGitAddedTimestamp(f));
+        entries.push(entry);
+      }
     } catch (err) {
       console.error(`Error processing ${f}:`, err);
     }
   }
 
-  // Sort by date descending, then by title
+  // Sort by git-added time descending (newest first), fallback to date
   entries.sort((a, b) => {
+    const aTime = addedTimes.get(a.id) ?? 0;
+    const bTime = addedTimes.get(b.id) ?? 0;
+    if (aTime || bTime) return bTime - aTime;
     if (b.date && a.date) return b.date.localeCompare(a.date);
-    if (b.date) return 1;
-    if (a.date) return -1;
     return a.title.localeCompare(b.title);
   });
 
