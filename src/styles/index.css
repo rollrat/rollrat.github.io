@@ -383,6 +383,7 @@ main {
 .detail-wrapper {
   padding: 32px;
   max-width: 860px;
+  margin: 0 auto;
 }
 
 .detail-back {
