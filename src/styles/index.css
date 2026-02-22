@@ -212,14 +212,14 @@ main {
 
 .sec-num {
   font-family: 'Silkscreen', monospace;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--green);
   letter-spacing: 2px;
 }
 
 .sec-title {
   font-family: 'Space Mono', monospace;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--bright);
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -269,7 +269,7 @@ main {
 
 .card-meta {
   flex-shrink: 0;
-  width: 110px;
+  width: 120px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -277,14 +277,14 @@ main {
 
 .card-date {
   font-family: 'Space Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--dim);
   letter-spacing: 0.5px;
 }
 
 .card-type-badge {
   font-family: 'Space Mono', monospace;
-  font-size: 9px;
+  font-size: 10px;
   padding: 2px 7px;
   border: 1px solid var(--line);
   color: var(--dim);
@@ -304,7 +304,7 @@ main {
 }
 
 .card-title {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 500;
   color: var(--white);
   margin-bottom: 6px;
@@ -314,14 +314,14 @@ main {
 
 .card-channel {
   font-family: 'Space Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--green);
   letter-spacing: 0.5px;
   margin-bottom: 6px;
 }
 
 .card-summary {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text);
   line-height: 1.7;
   overflow: hidden;
@@ -339,7 +339,7 @@ main {
 
 .card-tag {
   font-family: 'Space Mono', monospace;
-  font-size: 9px;
+  font-size: 10px;
   padding: 2px 8px;
   border: 1px solid var(--line);
   color: var(--dim);
@@ -347,11 +347,18 @@ main {
   border-radius: 0;
 }
 
+[data-theme="dark"] .card-date,
+[data-theme="dark"] .card-type-badge,
+[data-theme="dark"] .card-tag {
+  color: #8f8faa;
+  border-color: #303048;
+}
+
 .card-arrow {
   flex-shrink: 0;
   color: var(--dim);
   font-family: 'Space Mono', monospace;
-  font-size: 14px;
+  font-size: 15px;
   align-self: center;
   transition: color 0.2s, transform 0.2s;
 }
@@ -363,7 +370,7 @@ main {
 
 .card-count-badge {
   font-family: 'Space Mono', monospace;
-  font-size: 9px;
+  font-size: 10px;
   padding: 2px 7px;
   background: var(--green-lo);
   border: 1px solid var(--green);
@@ -443,6 +450,10 @@ main {
   font-size: 11px;
   color: var(--dim);
   margin-bottom: 14px;
+}
+
+[data-theme="dark"] .detail-meta-row {
+  color: #8f8faa;
 }
 
 .detail-meta-val {
