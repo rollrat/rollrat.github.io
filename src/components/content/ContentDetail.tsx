@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ContentEntry } from '../../types';
 
 interface ContentDetailProps {
@@ -6,15 +7,30 @@ interface ContentDetailProps {
 }
 
 export function ContentDetail({ entry, onBack }: ContentDetailProps) {
+  const [copied, setCopied] = useState(false);
+
   const videoUrl = entry.videoId
     ? `https://www.youtube.com/watch?v=${entry.videoId}`
     : null;
 
+  function handleCopy() {
+    const text = entry.markdown ?? entry.summary;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
   return (
     <div className="detail-wrapper">
-      <button className="detail-back" onClick={onBack}>
-        ‹ BACK
-      </button>
+      <div className="detail-top-actions">
+        <button className="detail-back" onClick={onBack}>
+          ‹ BACK
+        </button>
+        <button className={`detail-copy${copied ? ' copied' : ''}`} onClick={handleCopy}>
+          {copied ? '✓ COPIED' : '⎘ COPY'}
+        </button>
+      </div>
 
       <div className="detail-header">
         {entry.channel && (

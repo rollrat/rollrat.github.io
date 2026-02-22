@@ -10,6 +10,7 @@ export interface ContentEntry {
   date: string;
   tags: string[];
   html: string;
+  markdown?: string;
   summary: string;
   videoId?: string;
   channel?: string;

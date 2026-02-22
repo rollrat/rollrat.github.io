@@ -386,6 +386,13 @@ main {
   margin: 0 auto;
 }
 
+.detail-top-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
 .detail-back {
   background: none;
   border: 1px solid var(--line);
@@ -399,10 +406,31 @@ main {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 28px;
 }
 
 .detail-back:hover {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.detail-copy {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  padding: 6px 14px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.detail-copy:hover {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.detail-copy.copied {
   border-color: var(--green);
   color: var(--green);
 }
