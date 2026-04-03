@@ -1,9 +1,10 @@
-/* ═══ MASTER STYLESHEET ═══ */
+﻿/* ═══ MASTER STYLESHEET ═══ */
 @import './theme.css';
 @import './typography.css';
 @import './backgrounds.css';
 @import './scrollbar.css';
 @import './markdown.css';
+@import './claude.css';
 
 /* ═══ RESET ═══ */
 *, *::before, *::after {
@@ -59,6 +60,35 @@ main {
 
 .topbar-sep {
   color: var(--line-hi);
+}
+
+.topbar-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+}
+
+.topbar-link {
+  color: var(--dim);
+  text-decoration: none;
+  border: 1px solid transparent;
+  padding: 4px 10px;
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.topbar-link:hover {
+  color: var(--bright);
+  border-color: var(--line);
+}
+
+.topbar-link.active {
+  color: var(--green);
+  border-color: var(--green);
+  background: var(--green-lo);
 }
 
 .topbar-right {
@@ -581,6 +611,12 @@ main {
     display: none;
   }
 
+  .topbar-switch {
+    width: 100%;
+    margin-left: 0;
+    order: 3;
+  }
+
   .content-list,
   .detail-wrapper {
     padding: 20px 16px;
@@ -608,3 +644,4 @@ main {
     padding: 20px 16px;
   }
 }
+

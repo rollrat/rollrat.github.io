@@ -1,0 +1,277 @@
+digraph AgentPrompts {
+    // Global settings
+    rankdir=TB;
+    fontname="Malgun Gothic";
+    fontsize=12;
+    node [fontname="Malgun Gothic", fontsize=10, style=filled, shape=box, penwidth=1.2];
+    edge [fontname="Malgun Gothic", fontsize=8, color="#555555"];
+    bgcolor="white";
+    label="Claude Code - 내장 에이전트 프롬프트 구조";
+    labelloc=t;
+    labeljust=c;
+    fontsize=18;
+    pad=0.5;
+    compound=true;
+    nodesep=0.6;
+    ranksep=0.8;
+
+    // ========================================
+    // Spawning: Agent Tool
+    // ========================================
+    subgraph cluster_spawn {
+        label="에이전트 생성 (AgentTool/prompt.ts)";
+        style=filled;
+        color="#EFEBE9";
+        fillcolor="#EFEBE9";
+        penwidth=2;
+
+        spawn_decision [label="에이전트 생성 결정\n━━━━━━━━━━━━━━━━━━\n사용하지 말 것:\n• 특정 파일 읽기 → Read\n• class 정의 검색 → Grep\n• 2~3 파일 검색 → Read 직접", fillcolor="#D7CCC8"];
+
+        spawn_type [label="subagent_type 선택\n━━━━━━━━━━━━━━━━━━\n• general-purpose (기본)\n• Explore (탐색)\n• Plan (설계)\n• claude-code-guide (가이드)\n• 사용자 정의 에이전트", fillcolor="#BCAAA4"];
+
+        spawn_options [label="생성 옵션\n━━━━━━━━━━━━━━━━━━\n• run_in_background: true/false\n• isolation: \"worktree\" | \"remote\"\n• model: 모델 오버라이드\n• name: 포크 이름 (1-2단어)", fillcolor="#D7CCC8"];
+
+        fork_vs_fresh [label="Fork vs Fresh 판단\n━━━━━━━━━━━━━━━━━━━━━━━\n컨텍스트 겹침 높음 → Continue\n  (SendMessage로 계속)\n컨텍스트 겹침 낮음 → Spawn Fresh\n  (새 Agent 호출)\n━━━━━━━━━━━━━━━━━━━━━━━\n리서치→구현: 파일 겹치면 Continue\n실패 수정: Continue (에러 컨텍스트)\n검증: Fresh (편향 없이)\n무관한 작업: Fresh", fillcolor="#BCAAA4", shape=note];
+
+        spawn_decision -> spawn_type;
+        spawn_type -> spawn_options;
+        spawn_options -> fork_vs_fresh;
+    }
+
+    // ========================================
+    // Coordinator Mode
+    // ========================================
+    subgraph cluster_coordinator {
+        label="코디네이터 모드 (coordinator/coordinatorMode.ts)";
+        style=filled;
+        color="#E8EAF6";
+        fillcolor="#E8EAF6";
+        penwidth=2;
+
+        coord_role [label="역할: 오케스트레이터\n━━━━━━━━━━━━━━━━━━\n• 사용자 목표 달성 지원\n• 워커 작업 지시\n• 결과 합성 & 소통\n• 간단한 건 직접 답변", fillcolor="#9FA8DA"];
+
+        coord_tools [label="사용 가능 도구\n━━━━━━━━━━━━━━━━━━\n• Agent (워커 생성)\n• SendMessage (워커 계속)\n• TaskStop (워커 중지)\n• subscribe_pr_activity\n• unsubscribe_pr_activity", fillcolor="#C5CAE9"];
+
+        coord_workflow [label="작업 워크플로우\n━━━━━━━━━━━━━━━━━━\nResearch → Synthesis\n→ Implementation → Verification\n━━━━━━━━━━━━━━━━━━\n병렬이 최대 강점!\n읽기 작업: 자유 병렬\n쓰기 작업: 파일별 1개\n검증: 구현과 병렬 가능", fillcolor="#9FA8DA"];
+
+        coord_synthesis [label="합성 원칙 (핵심!)\n━━━━━━━━━━━━━━━━━━\n❌ \"based on your findings\"\n❌ \"based on the research\"\n✓ 직접 이해 후 지시\n✓ 파일 경로, 줄 번호,\n   에러 메시지 포함", fillcolor="#7986CB", shape=note];
+
+        coord_notification [label="워커 결과 알림 형식\n━━━━━━━━━━━━━━━━━━\n<task-notification>\n  <task-id>ID</task-id>\n  <status>completed|failed</status>\n  <summary>요약</summary>\n  <result>최종 응답</result>\n  <usage>토큰/도구/시간</usage>\n</task-notification>", fillcolor="#C5CAE9", shape=note];
+
+        coord_role -> coord_tools;
+        coord_tools -> coord_workflow;
+        coord_workflow -> coord_synthesis;
+        coord_role -> coord_notification [style=dashed];
+    }
+
+    // ========================================
+    // Agent 1: General Purpose
+    // ========================================
+    subgraph cluster_general {
+        label="General Purpose Agent";
+        style=filled;
+        color="#E8F5E9";
+        fillcolor="#E8F5E9";
+        penwidth=2;
+
+        gen_profile [label="범용 에이전트\n━━━━━━━━━━━━━━━━━━\n모델: 기본 (상속)\n접근: 읽기+쓰기 (전체)\n도구: 모든 도구 사용 가능", fillcolor="#66BB6A"];
+
+        gen_strengths [label="핵심 강점\n━━━━━━━━━━━━━━━━━━\n• 대규모 코드베이스 검색\n• 다중 파일 아키텍처 분석\n• 복잡한 멀티스텝 조사\n• 여러 파일 탐색 필요 질문", fillcolor="#A5D6A7"];
+
+        gen_rules [label="행동 규칙\n━━━━━━━━━━━━━━━━━━\n• 넓게 검색 → 좁혀가기\n• 여러 위치, 명명 규칙 확인\n• 파일 생성 최소화\n• 문서 파일 자동 생성 금지\n• 완료 시 간결한 보고서", fillcolor="#C8E6C9", shape=note];
+
+        gen_profile -> gen_strengths -> gen_rules;
+    }
+
+    // ========================================
+    // Agent 2: Explore
+    // ========================================
+    subgraph cluster_explore {
+        label="Explore Agent";
+        style=filled;
+        color="#E3F2FD";
+        fillcolor="#E3F2FD";
+        penwidth=2;
+
+        exp_profile [label="탐색 전문 에이전트\n━━━━━━━━━━━━━━━━━━\n모델: Haiku (속도 우선)\n접근: ⛔ READ-ONLY\n도구: Glob, Grep, Read, Bash(읽기)", fillcolor="#64B5F6"];
+
+        exp_strengths [label="핵심 강점\n━━━━━━━━━━━━━━━━━━\n• 빠른 glob 패턴 매칭\n• 정규식 코드 검색\n• 파일 내용 분석\n• 최소 3회 쿼리 후 반환", fillcolor="#90CAF9"];
+
+        exp_forbidden [label="⛔ 엄격 금지 목록\n━━━━━━━━━━━━━━━━━━\n• Write, touch, 파일 생성\n• Edit, 파일 수정\n• rm, 파일 삭제\n• mv, cp, 파일 이동/복사\n• /tmp에도 임시 파일 금지\n• >, >>, | 리다이렉트 금지\n• mkdir, npm install 등\n• git add, git commit 등", fillcolor="#FFCDD2", shape=note];
+
+        exp_speed [label="속도 최적화\n━━━━━━━━━━━━━━━━━━\n• 병렬 도구 호출 최대화\n• 효율적 검색 전략\n• CLAUDE.md 컨텍스트 생략\n  (토큰 절약)", fillcolor="#BBDEFB", shape=note];
+
+        exp_profile -> exp_strengths;
+        exp_profile -> exp_forbidden;
+        exp_strengths -> exp_speed;
+    }
+
+    // ========================================
+    // Agent 3: Plan
+    // ========================================
+    subgraph cluster_plan {
+        label="Plan Agent";
+        style=filled;
+        color="#F3E5F5";
+        fillcolor="#F3E5F5";
+        penwidth=2;
+
+        plan_profile [label="설계 전문 에이전트\n━━━━━━━━━━━━━━━━━━\n모델: Inherit (전체 성능)\n접근: ⛔ READ-ONLY\n도구: Glob, Grep, Read, Bash(읽기)", fillcolor="#CE93D8"];
+
+        plan_process [label="설계 프로세스\n━━━━━━━━━━━━━━━━━━\n① 요구사항 이해\n   (할당된 관점 적용)\n② 철저한 탐색\n   (패턴, 아키텍처, 참조)\n③ 솔루션 설계\n   (트레이드오프 고려)\n④ 계획 상세화\n   (의존성, 순서, 도전)", fillcolor="#E1BEE7"];
+
+        plan_output [label="필수 출력 형식\n━━━━━━━━━━━━━━━━━━\n### Critical Files for\n### Implementation\n• path/to/file1.ts\n• path/to/file2.ts\n• path/to/file3.ts\n(3~5개 핵심 파일)", fillcolor="#EDE7F6", shape=note];
+
+        plan_profile -> plan_process -> plan_output;
+    }
+
+    // ========================================
+    // Agent 4: Verification
+    // ========================================
+    subgraph cluster_verify {
+        label="Verification Agent (가장 상세한 프롬프트)";
+        style=filled;
+        color="#FCE4EC";
+        fillcolor="#FCE4EC";
+        penwidth=2;
+
+        ver_profile [label="검증 전문 에이전트\n━━━━━━━━━━━━━━━━━━\n모델: Inherit (전체 성능)\n접근: 프로젝트 READ-ONLY\n        /tmp 쓰기 허용\n도구: Bash, Read, WebFetch, MCP", fillcolor="#F48FB1"];
+
+        ver_philosophy [label="핵심 철학\n━━━━━━━━━━━━━━━━━━\n\"확인하는 게 아니라\n깨뜨리려고 시도하는 것\"\n━━━━━━━━━━━━━━━━━━\n실패 패턴 ①: 검증 회피\n  (코드만 읽고 PASS)\n실패 패턴 ②: 80%에 속기\n  (겉만 보고 통과)", fillcolor="#F48FB1", penwidth=2];
+
+        ver_strategies [label="타입별 검증 전략\n━━━━━━━━━━━━━━━━━━━━━━━━━\nFrontend   → 서버 시작 + 브라우저 자동화 + 리소스 확인\nBackend    → curl 엔드포인트 + 응답 형태 + 에러 처리\nCLI        → 대표 입력 실행 + stdout/stderr/exit code\nInfra      → 문법 검증 + dry-run (terraform plan 등)\nLibrary    → 빌드 + 테스트 + 소비자 관점 import\nBug Fix    → 원본 재현 → 수정 확인 → 회귀 테스트\nMobile     → 시뮬레이터 빌드 + UI 트리 덤프 + 크래시 로그\nData/ML    → 샘플 실행 + 스키마 검증 + null/NaN 처리\nDB 마이그레이션 → up/down + 스키마 확인 + 기존 데이터\nRefactoring → 기존 테스트 무수정 통과 + API 표면 diff", fillcolor="#F8BBD0"];
+
+        ver_required [label="필수 단계 (모든 검증)\n━━━━━━━━━━━━━━━━━━\n① CLAUDE.md/README 확인\n② 빌드 실행 (실패=자동 FAIL)\n③ 테스트 스위트 (실패=자동 FAIL)\n④ 린터/타입체커 실행\n⑤ 관련 코드 회귀 확인", fillcolor="#F48FB1"];
+
+        ver_rationalization [label="자기 합리화 인식\n━━━━━━━━━━━━━━━━━━\n❌ \"코드를 읽어보니 맞다\"\n   → 읽기는 검증이 아님. 실행하라.\n❌ \"구현자 테스트가 통과\"\n   → 구현자도 LLM. 독립 검증.\n❌ \"아마 괜찮을 것\"\n   → '아마'는 검증 아님. 실행하라.\n❌ \"브라우저가 없다\"\n   → MCP 도구 확인했나?\n❌ \"너무 오래 걸린다\"\n   → 당신 판단이 아님.", fillcolor="#FFCDD2", shape=note];
+
+        ver_adversarial [label="적대적 프로브\n━━━━━━━━━━━━━━━━━━\n• 동시성: 병렬 요청 → 중복?\n• 경계값: 0, -1, \"\", MAX_INT\n• 멱등성: 같은 요청 2번\n• 고아 작업: 없는 ID 참조\n최소 1개는 반드시 실행!", fillcolor="#F48FB1"];
+
+        ver_output [label="필수 출력 형식\n━━━━━━━━━━━━━━━━━━\n### Check: [검증 대상]\n**Command run:**\n  [실행한 명령어]\n**Output observed:**\n  [실제 터미널 출력]\n**Result: PASS** 또는\n**Result: FAIL** (Expected vs Actual)\n━━━━━━━━━━━━━━━━━━\nVERDICT: PASS | FAIL | PARTIAL", fillcolor="#EF9A9A", shape=note, penwidth=2];
+
+        ver_profile -> ver_philosophy;
+        ver_philosophy -> ver_strategies;
+        ver_strategies -> ver_required;
+        ver_required -> ver_adversarial;
+        ver_adversarial -> ver_output;
+        ver_philosophy -> ver_rationalization;
+    }
+
+    // ========================================
+    // Agent 5: Claude Code Guide
+    // ========================================
+    subgraph cluster_guide {
+        label="Claude Code Guide Agent";
+        style=filled;
+        color="#FFFDE7";
+        fillcolor="#FFFDE7";
+        penwidth=2;
+
+        guide_profile [label="가이드 에이전트\n━━━━━━━━━━━━━━━━━━\n모델: Haiku (경량)\n접근: READ-ONLY\n도구: WebFetch, WebSearch,\n      Glob, Grep, Read", fillcolor="#FFF176"];
+
+        guide_domains [label="3개 전문 도메인\n━━━━━━━━━━━━━━━━━━\n① Claude Code (CLI 도구)\n   설치, 훅, 스킬, MCP,\n   단축키, IDE 통합\n② Claude Agent SDK\n   에이전트 구성, 세션,\n   배포, 비용 추적\n③ Claude API\n   Messages API, Tool Use,\n   Vision, Extended Thinking", fillcolor="#FFF59D"];
+
+        guide_docs [label="문서 소스\n━━━━━━━━━━━━━━━━━━\nClaude Code:\n  code.claude.com/docs/en/\n  claude_code_docs_map.md\nAgent SDK + API:\n  platform.claude.com/llms.txt", fillcolor="#FFF59D", shape=note];
+
+        guide_approach [label="접근 방식\n━━━━━━━━━━━━━━━━━━\n① 도메인 판별\n② docs map WebFetch\n③ 관련 URL 식별\n④ 문서 페이지 가져오기\n⑤ 명확한 안내 제공\n⑥ 없으면 WebSearch\n⑦ 로컬 파일 참조", fillcolor="#FFF176"];
+
+        guide_dynamic [label="동적 컨텍스트 주입\n━━━━━━━━━━━━━━━━━━\n• 사용자 커스텀 스킬 목록\n• .claude/agents/ 에이전트\n• MCP 서버 설정\n• 플러그인 명령어\n• settings.json", fillcolor="#FFFDE7", shape=note];
+
+        guide_profile -> guide_domains;
+        guide_domains -> guide_docs;
+        guide_profile -> guide_approach;
+        guide_approach -> guide_dynamic;
+    }
+
+    // ========================================
+    // Tool Prompts
+    // ========================================
+    subgraph cluster_tool_prompts {
+        label="주요 도구 프롬프트";
+        style=filled;
+        color="#E0F2F1";
+        fillcolor="#E0F2F1";
+        penwidth=2;
+
+        bash_prompt [label="BashTool 프롬프트\n━━━━━━━━━━━━━━━━━━\n• 전용 도구 우선 규칙\n  Read>cat, Edit>sed, Grep>grep\n• Git 안전 프로토콜\n  force push 금지, 새 커밋 우선,\n  시크릿 파일 커밋 경고\n• 백그라운드 태스크 안내\n• 샌드박스 관리\n  ($TMPDIR 사용, /tmp 직접 금지)", fillcolor="#80CBC4"];
+
+        brief_prompt [label="Brief/SendMessage 프롬프트\n━━━━━━━━━━━━━━━━━━\n• 도구 바깥 텍스트는 대부분 안 읽힘\n• 마크다운 + 첨부파일 지원\n• status: 'normal' | 'proactive'\n• 긴 작업: ack → 작업 → 결과\n• 체크포인트: 정보가 있을 때만\n  (\"테스트 실행 중...\" 같은 필러 X)", fillcolor="#80CBC4"];
+
+        teammate_prompt [label="Teammate 프롬프트\n━━━━━━━━━━━━━━━━━━\n• SendMessage(to: \"이름\") 필수\n• to: \"*\" = 브로드캐스트\n• 텍스트 응답은 팀원에게 안 보임\n• 태스크 시스템 통해 조율", fillcolor="#80CBC4"];
+    }
+
+    // ========================================
+    // Summary Comparison
+    // ========================================
+    subgraph cluster_comparison {
+        label="에이전트 비교 요약";
+        style=filled;
+        color="#F5F5F5";
+        fillcolor="#F5F5F5";
+        penwidth=2;
+
+        comparison [label=<
+<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+  <TR>
+    <TD BGCOLOR="#E0E0E0"><B>에이전트</B></TD>
+    <TD BGCOLOR="#E0E0E0"><B>모델</B></TD>
+    <TD BGCOLOR="#E0E0E0"><B>접근</B></TD>
+    <TD BGCOLOR="#E0E0E0"><B>핵심 역할</B></TD>
+  </TR>
+  <TR>
+    <TD BGCOLOR="#E8F5E9">General Purpose</TD>
+    <TD>기본(상속)</TD>
+    <TD>R+W</TD>
+    <TD>멀티스텝 리서치/분석</TD>
+  </TR>
+  <TR>
+    <TD BGCOLOR="#E3F2FD">Explore</TD>
+    <TD>Haiku</TD>
+    <TD>R-Only</TD>
+    <TD>빠른 코드 검색/탐색</TD>
+  </TR>
+  <TR>
+    <TD BGCOLOR="#F3E5F5">Plan</TD>
+    <TD>Inherit</TD>
+    <TD>R-Only</TD>
+    <TD>아키텍처 설계</TD>
+  </TR>
+  <TR>
+    <TD BGCOLOR="#FCE4EC">Verification</TD>
+    <TD>Inherit</TD>
+    <TD>R-Only*</TD>
+    <TD>적대적 검증/QA</TD>
+  </TR>
+  <TR>
+    <TD BGCOLOR="#FFFDE7">Guide</TD>
+    <TD>Haiku</TD>
+    <TD>R-Only</TD>
+    <TD>문서 기반 안내</TD>
+  </TR>
+  <TR>
+    <TD BGCOLOR="#E8EAF6">Coordinator</TD>
+    <TD>N/A</TD>
+    <TD>위임만</TD>
+    <TD>멀티워커 오케스트레이션</TD>
+  </TR>
+</TABLE>
+        >, shape=plaintext];
+    }
+
+    // ========================================
+    // EDGES: Spawn → Agents
+    // ========================================
+    fork_vs_fresh -> gen_profile [label="general-purpose", penwidth=2, color="#2E7D32", lhead=cluster_general];
+    fork_vs_fresh -> exp_profile [label="Explore", penwidth=2, color="#1565C0", lhead=cluster_explore];
+    fork_vs_fresh -> plan_profile [label="Plan", penwidth=2, color="#7B1FA2", lhead=cluster_plan];
+    fork_vs_fresh -> ver_profile [label="Verification\n(백그라운드 기본)", penwidth=2, color="#C62828", lhead=cluster_verify];
+    fork_vs_fresh -> guide_profile [label="claude-code-guide", penwidth=2, color="#F9A825", lhead=cluster_guide];
+
+    // Coordinator spawns agents
+    coord_tools -> fork_vs_fresh [label="Agent 도구로\n워커 생성", penwidth=2, color="#283593", lhead=cluster_spawn];
+
+    // Tool prompts used by agents
+    gen_profile -> bash_prompt [style=dashed, color="#888", label="Bash 사용"];
+    exp_profile -> bash_prompt [style=dashed, color="#888", label="읽기 전용 Bash"];
+    ver_profile -> bash_prompt [style=dashed, color="#888", label="Bash 사용"];
+}

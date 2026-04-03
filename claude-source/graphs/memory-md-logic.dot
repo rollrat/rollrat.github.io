@@ -1,0 +1,326 @@
+digraph MemoryMdLogic {
+    // Global settings
+    rankdir=TB;
+    fontname="Malgun Gothic";
+    fontsize=12;
+    node [fontname="Malgun Gothic", fontsize=10, style=filled, shape=box, penwidth=1.2];
+    edge [fontname="Malgun Gothic", fontsize=8, color="#555555"];
+    bgcolor="white";
+    label="Claude Code - MEMORY.md 로직 & 프롬프트 상세";
+    labelloc=t;
+    labeljust=c;
+    fontsize=18;
+    pad=0.5;
+    compound=true;
+    nodesep=0.5;
+    ranksep=0.7;
+
+    // ========================================
+    // MEMORY.md Identity
+    // ========================================
+    subgraph cluster_identity {
+        label="MEMORY.md 정체성";
+        style=filled;
+        color="#E3F2FD";
+        fillcolor="#E3F2FD";
+        penwidth=2;
+
+        identity [label="MEMORY.md\n━━━━━━━━━━━━━━━━━━━━━━━\n• 인덱스 파일 (메모리 아님)\n• frontmatter 없음\n• 항상 컨텍스트에 로드됨\n• 메모리 내용 직접 기록 금지\n━━━━━━━━━━━━━━━━━━━━━━━\n엔트리 형식:\n - [Title](file.md) — one-line hook\n (줄당 ~150자 이하)", fillcolor="#64B5F6", penwidth=2];
+
+        limits [label="크기 제한 상수\n━━━━━━━━━━━━━━━━━━━━━━━\nMAX_ENTRYPOINT_LINES = 200\nMAX_ENTRYPOINT_BYTES = 25,000\n━━━━━━━━━━━━━━━━━━━━━━━\n위치:\n~/.claude/projects/{slug}/memory/\nENTRYPOINT_NAME = 'MEMORY.md'", fillcolor="#90CAF9"];
+    }
+
+    // ========================================
+    // Truncation Algorithm
+    // ========================================
+    subgraph cluster_truncation {
+        label="truncateEntrypointContent() 알고리즘";
+        style=filled;
+        color="#FFF3E0";
+        fillcolor="#FFF3E0";
+        penwidth=2;
+
+        trunc_input [label="입력: raw MEMORY.md\n(trim 후)", shape=ellipse, fillcolor="#FFE0B2"];
+        trunc_check_line [label="줄 수 > 200?", shape=diamond, fillcolor="#FFB74D"];
+        trunc_slice_line [label="처음 200줄만 slice", fillcolor="#FFCC80"];
+        trunc_check_byte [label="바이트 > 25,000?", shape=diamond, fillcolor="#FFB74D"];
+        trunc_slice_byte [label="25KB 이전 마지막 \\n에서 자르기\n(줄 중간 잘림 방지)", fillcolor="#FFCC80"];
+        trunc_warning [label="경고 메시지 추가\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n바이트만 초과:\n  \"{size} (limit: 25KB) —\n   index entries are too long\"\n줄만 초과:\n  \"{count} lines (limit: 200)\"\n둘 다 초과:\n  \"{count} lines and {size}\"", fillcolor="#FFE0B2", shape=note];
+        trunc_ok [label="트렁케이션 불필요\n(원본 반환)", fillcolor="#C8E6C9"];
+        trunc_output [label="EntrypointTruncation\n━━━━━━━━━━━━━━━━━━━━\ncontent: 잘린 텍스트+경고\nlineCount: 원본 줄 수\nbyteCount: 원본 바이트\nwasLineTruncated: bool\nwasByteTruncated: bool", fillcolor="#FFE0B2"];
+
+        trunc_input -> trunc_check_line;
+        trunc_check_line -> trunc_slice_line [label="Yes"];
+        trunc_check_line -> trunc_check_byte [label="No"];
+        trunc_slice_line -> trunc_check_byte;
+        trunc_check_byte -> trunc_slice_byte [label="Yes"];
+        trunc_check_byte -> trunc_ok [label="둘 다 No"];
+        trunc_slice_byte -> trunc_warning;
+        trunc_slice_line -> trunc_warning [style=dashed, label="줄만 초과 시"];
+        trunc_warning -> trunc_output;
+        trunc_ok -> trunc_output [style=dashed];
+    }
+
+    // ========================================
+    // Memory Types (4-type taxonomy)
+    // ========================================
+    subgraph cluster_types {
+        label="4가지 메모리 타입 (memoryTypes.ts)";
+        style=filled;
+        color="#E8F5E9";
+        fillcolor="#E8F5E9";
+        penwidth=2;
+
+        type_user [label="user (사용자)\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n역할, 목표, 책임, 지식\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nwhen: 역할/선호도/지식 파악 시\nhow: 사용자 관점에 맞춘 작업\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n예: \"data scientist, 로깅 조사 중\"\n예: \"Go 10년 경력, React 처음\"", fillcolor="#A5D6A7"];
+
+        type_feedback [label="feedback (피드백)\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n작업 접근 방식 지침 (회피+유지)\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nwhen: 수정(\"하지마\") 또는\n      확인(\"맞아, 그렇게 해\")\nhow: 같은 지침 두 번 안 받게\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n구조: 규칙 → Why → How to apply\n예: \"DB 목킹 금지 (지난분기 사고)\"\n예: \"응답 끝 요약 불필요\"", fillcolor="#81C784"];
+
+        type_project [label="project (프로젝트)\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n코드/git에서 파생 불가한\n진행 중인 작업/목표/사건\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nwhen: 누가/무엇을/왜/언제\n      상대 날짜→절대 날짜 변환\nhow: 요청 맥락 이해, 제안 개선\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n구조: 사실 → Why → How to apply\n예: \"3/5부터 머지 동결 (릴리스)\"\n예: \"auth 재작성=법적 컴플라이언스\"", fillcolor="#66BB6A"];
+
+        type_reference [label="reference (참조)\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n외부 시스템 정보 위치 포인터\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nwhen: 외부 리소스 용도 파악 시\nhow: 외부 시스템 참조 시 활용\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n예: \"Linear INGEST=파이프라인 버그\"\n예: \"grafana.internal/d/api-latency\n     =온콜 대시보드\"", fillcolor="#A5D6A7"];
+    }
+
+    // ========================================
+    // What NOT to save
+    // ========================================
+    subgraph cluster_not_save {
+        label="저장 금지 항목 (WHAT_NOT_TO_SAVE)";
+        style=filled;
+        color="#FFEBEE";
+        fillcolor="#FFEBEE";
+        penwidth=2;
+
+        not_save [label="⛔ 메모리에 저장하지 않을 것\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n• 코드 패턴, 규칙, 아키텍처, 파일 경로 → 프로젝트에서 유도 가능\n• git 이력, 최근 변경, 누가 뭘 바꿨나 → git log/blame이 권위\n• 디버깅 해결책 → 코드에 수정, 커밋 메시지에 맥락\n• CLAUDE.md에 이미 문서화된 것\n• 일시적 태스크: 진행 중 작업, 임시 상태, 현재 대화 컨텍스트\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n사용자가 명시적으로 저장 요청해도 적용!\n→ \"PR 목록 저장해줘\" → \"놀라웠던 점이 뭐예요?\" 되물어야 함", fillcolor="#FFCDD2", shape=note];
+    }
+
+    // ========================================
+    // Frontmatter Format
+    // ========================================
+    subgraph cluster_frontmatter {
+        label="메모리 파일 형식 (MEMORY_FRONTMATTER_EXAMPLE)";
+        style=filled;
+        color="#F3E5F5";
+        fillcolor="#F3E5F5";
+        penwidth=2;
+
+        frontmatter [label="토픽 파일 형식 (*.md)\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n---\nname: {{메모리 이름}}\ndescription: {{한 줄 설명\n  — 향후 관련성 판단에 사용}}\ntype: {{user|feedback|\n       project|reference}}\n---\n\n{{메모리 내용\n  feedback/project:\n  규칙 → **Why:** → **How to apply:**}}", fillcolor="#CE93D8", shape=note];
+    }
+
+    // ========================================
+    // Two-Step Save Process
+    // ========================================
+    subgraph cluster_save {
+        label="2단계 저장 프로세스 (buildMemoryLines)";
+        style=filled;
+        color="#E0F7FA";
+        fillcolor="#E0F7FA";
+        penwidth=2;
+
+        save_step1 [label="Step 1: 토픽 파일 작성\n━━━━━━━━━━━━━━━━━━━━━━━━\nWrite tool로 개별 파일 생성\n예: user_role.md,\n    feedback_testing.md\nfrontmatter + 본문", fillcolor="#4DD0E1"];
+
+        save_step2 [label="Step 2: MEMORY.md 인덱스 추가\n━━━━━━━━━━━━━━━━━━━━━━━━\n포인터 한 줄 추가:\n- [Title](file.md) — hook\n~150자 이하\nfrontmatter 없음\n내용 직접 기록 금지", fillcolor="#4DD0E1"];
+
+        save_guidelines [label="가이드라인\n━━━━━━━━━━━━━━━━━━━━━━━━\n• name/description/type 최신 유지\n• 의미별 구성 (시간순 아님)\n• 잘못된/오래된 메모리 수정/삭제\n• 중복 금지 (기존 업데이트 우선)\n• 디렉토리는 이미 존재\n  (mkdir/존재확인 불필요)", fillcolor="#80DEEA", shape=note];
+
+        save_step1 -> save_step2 [label="순서 필수", penwidth=2, color="#00695C"];
+        save_step2 -> save_guidelines [style=dashed];
+    }
+
+    // ========================================
+    // When to Access & Trust
+    // ========================================
+    subgraph cluster_access {
+        label="메모리 접근 & 신뢰 규칙";
+        style=filled;
+        color="#FFFDE7";
+        fillcolor="#FFFDE7";
+        penwidth=2;
+
+        when_access [label="## When to access memories\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n• 관련성 있을 때, 이전 대화 참조 시\n• 사용자가 \"확인/기억/회상\" 요청 → 반드시 접근\n• \"무시해\" 요청 → MEMORY.md 비어있는 것처럼\n  (적용/인용/비교/언급 금지)\n• 메모리 = 시점 관찰, 현재 상태 아님\n  → 충돌 시 현재 관찰 우선, 메모리 업데이트", fillcolor="#FFF59D"];
+
+        trust_recall [label="## Before recommending from memory\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n메모리가 함수/파일/플래그 이름 → 작성 시점 주장\n(이름 변경/삭제/미머지 가능)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n• 파일 경로 → 파일 존재 확인\n• 함수/플래그 → grep으로 확인\n• 사용자가 행동할 예정 → 먼저 검증\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\"메모리가 X 존재한다고 함\"\n ≠ \"X가 지금 존재함\"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n레포 상태 요약 = 시점 고정\n→ recent/current 질문엔 git log 우선", fillcolor="#FFF176", shape=note];
+
+        when_access -> trust_recall;
+    }
+
+    // ========================================
+    // Memory vs Other Persistence
+    // ========================================
+    subgraph cluster_persistence {
+        label="메모리 vs 다른 영속 메커니즘";
+        style=filled;
+        color="#EFEBE9";
+        fillcolor="#EFEBE9";
+        penwidth=2;
+
+        vs_plan [label="Plan vs Memory\n━━━━━━━━━━━━━━━━━━━━━━━\n비-trivial 구현 작업 접근 합의\n→ Plan 사용\n계획 변경 → Plan 업데이트\n(메모리에 저장하지 않음)", fillcolor="#D7CCC8"];
+
+        vs_task [label="Task vs Memory\n━━━━━━━━━━━━━━━━━━━━━━━\n현재 대화의 이산 단계/진행\n→ Task 사용\n미래 대화에도 유용 → Memory\n현재만 유용 → Task", fillcolor="#D7CCC8"];
+    }
+
+    // ========================================
+    // loadMemoryPrompt Dispatching
+    // ========================================
+    subgraph cluster_dispatch {
+        label="loadMemoryPrompt() 디스패치 로직";
+        style=filled;
+        color="#FCE4EC";
+        fillcolor="#FCE4EC";
+        penwidth=2;
+
+        dispatch_start [label="loadMemoryPrompt()", shape=ellipse, fillcolor="#F48FB1"];
+        dispatch_kairos [label="KAIROS +\nautoEnabled +\ngetKairosActive()?", shape=diamond, fillcolor="#F8BBD0"];
+        dispatch_team [label="TEAMMEM +\nisTeamMemEnabled()?", shape=diamond, fillcolor="#F8BBD0"];
+        dispatch_auto [label="autoEnabled?", shape=diamond, fillcolor="#F8BBD0"];
+        dispatch_disabled [label="return null\n(메모리 비활성)", fillcolor="#FFCDD2"];
+
+        dispatch_kairos_result [label="buildAssistantDailyLogPrompt()\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n일일 로그 모드:\nlogs/YYYY/MM/YYYY-MM-DD.md\nappend-only (편집 금지)\nMEMORY.md = 읽기 전용 인덱스\n야간 /dream이 통합 처리", fillcolor="#EF9A9A"];
+
+        dispatch_team_result [label="buildCombinedMemoryPrompt()\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nprivate + team 두 디렉토리\n<scope> 태그 포함\nfeedback: 팀 규칙 vs 개인 선호\nproject: 팀 편향", fillcolor="#EF9A9A"];
+
+        dispatch_auto_result [label="buildMemoryLines().join('\\n')\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n개인 단일 디렉토리\nTYPES_SECTION_INDIVIDUAL\n<scope> 없음", fillcolor="#EF9A9A"];
+
+        dispatch_start -> dispatch_kairos;
+        dispatch_kairos -> dispatch_kairos_result [label="Yes"];
+        dispatch_kairos -> dispatch_team [label="No"];
+        dispatch_team -> dispatch_team_result [label="Yes"];
+        dispatch_team -> dispatch_auto [label="No"];
+        dispatch_auto -> dispatch_auto_result [label="Yes"];
+        dispatch_auto -> dispatch_disabled [label="No"];
+    }
+
+    // ========================================
+    // Relevance Search (findRelevantMemories)
+    // ========================================
+    subgraph cluster_recall {
+        label="관련 메모리 검색 (findRelevantMemories.ts)";
+        style=filled;
+        color="#EDE7F6";
+        fillcolor="#EDE7F6";
+        penwidth=2;
+
+        recall_scan [label="① memoryScan.ts\n━━━━━━━━━━━━━━━━━━━━━━━━\n재귀 디렉토리 탐색\n.md 파일 (MEMORY.md 제외)\nfrontmatter 30줄만 파싱\nmtime 최신순 정렬\nMAX_MEMORY_FILES = 200", fillcolor="#B39DDB"];
+
+        recall_manifest [label="② formatMemoryManifest()\n━━━━━━━━━━━━━━━━━━━━━━━━\n형식:\n- [type] filename (ISO시간): desc\n━━━━━━━━━━━━━━━━━━━━━━━━\n예:\n- [feedback] testing.md\n  (2026-03-31T15:23): DB 목킹 금지", fillcolor="#D1C4E9"];
+
+        recall_sonnet [label="③ Sonnet 사이드 쿼리\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nSELECT_MEMORIES_SYSTEM_PROMPT:\n\"Return filenames for memories\nthat will clearly be useful\n(up to 5)\"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n• 확신 없으면 포함하지 마라\n• 관련 없으면 빈 목록 OK\n• 최근 사용 도구의 참조 문서 제외\n  (BUT 경고/gotcha는 포함!)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nmax_tokens: 256\nJSON schema 출력:\n{selected_memories: string[]}", fillcolor="#9575CD"];
+
+        recall_filter [label="④ 필터링\n━━━━━━━━━━━━━━━━━━━━━━━━\n이미 표면화된 파일 제외\n(alreadySurfaced Set)\nRelevantMemory[] 반환\n(path + mtimeMs)", fillcolor="#D1C4E9"];
+
+        recall_load [label="⑤ 선택된 파일만 전체 로드\n+ memoryFreshnessNote()\n━━━━━━━━━━━━━━━━━━━━━━━━\n2일+ 오래된 메모리:\n\"이 메모리는 47일 전 것.\n코드 동작이나 file:line 인용은\n오래됐을 수 있음. 현재 코드로\n검증 후 주장하라.\"", fillcolor="#B39DDB"];
+
+        recall_scan -> recall_manifest -> recall_sonnet -> recall_filter -> recall_load;
+    }
+
+    // ========================================
+    // Path Resolution
+    // ========================================
+    subgraph cluster_paths {
+        label="경로 해석 (paths.ts)";
+        style=filled;
+        color="#F1F8E9";
+        fillcolor="#F1F8E9";
+        penwidth=2;
+
+        path_enabled [label="isAutoMemoryEnabled()\n━━━━━━━━━━━━━━━━━━━━━━━━\n우선순위 (먼저 정의된 것 승):\n① CLAUDE_CODE_DISABLE_AUTO_MEMORY\n② CLAUDE_CODE_SIMPLE (--bare)\n③ CCR without persistent storage\n④ settings.json autoMemoryEnabled\n⑤ 기본값: enabled", fillcolor="#AED581"];
+
+        path_resolve [label="getAutoMemPath() [메모이즈]\n━━━━━━━━━━━━━━━━━━━━━━━━\n해석 순서:\n① CLAUDE_COWORK_MEMORY_PATH_OVERRIDE\n② settings.json autoMemoryDirectory\n   (신뢰 소스만)\n③ ~/.claude/projects/{slug}/memory/\n━━━━━━━━━━━━━━━━━━━━━━━━\nNFC 정규화, 후행 구분자 포함\n보안: 위험 경로, UNC, 드라이브 루트,\n      null 바이트 검증", fillcolor="#AED581"];
+
+        path_entry [label="getAutoMemEntrypoint()\n→ {autoMemPath}/MEMORY.md", fillcolor="#C5E1A5"];
+
+        path_team [label="getTeamMemPath()\n→ {autoMemPath}/team/\ngetTeamMemEntrypoint()\n→ {autoMemPath}/team/MEMORY.md", fillcolor="#C5E1A5"];
+
+        path_daily [label="getAutoMemDailyLogPath()\n→ {autoMemPath}/logs/\n   YYYY/MM/YYYY-MM-DD.md", fillcolor="#C5E1A5"];
+
+        path_enabled -> path_resolve;
+        path_resolve -> path_entry;
+        path_resolve -> path_team;
+        path_resolve -> path_daily;
+    }
+
+    // ========================================
+    // Extraction Agent
+    // ========================================
+    subgraph cluster_extraction {
+        label="자동 추출 (extractMemories)";
+        style=filled;
+        color="#E0F2F1";
+        fillcolor="#E0F2F1";
+        penwidth=2;
+
+        extract_prompt [label="추출 에이전트 프롬프트\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\"최근 ~N개 메시지 분석하여\n영구 메모리 업데이트하라\"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n배치 전략:\nTurn 1 → 모든 FileRead 병렬\nTurn 2 → 모든 Write/Edit 병렬\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n제한: 소스 코드 grep/조사 금지\n      최근 메시지 내용만 사용\nmax 5 턴, 기존 manifest 사전 주입", fillcolor="#80CBC4"];
+
+        extract_skip [label="스킵 조건\n━━━━━━━━━━━━━━━━━━━━━━━━\nhasMemoryWritesSince():\n메인 에이전트가 이미\nWrite/Edit로 메모리 작성?\n→ Yes면 추출 스킵", fillcolor="#80CBC4", shape=diamond];
+
+        extract_tools [label="허용 도구\n━━━━━━━━━━━━━━━━━━━━━━━━\n✓ FileRead, Grep, Glob\n✓ Bash (ls/find/cat/stat만)\n✓ Edit/Write (메모리 dir만)\n✗ 그 외 모든 도구", fillcolor="#B2DFDB", shape=note];
+    }
+
+    // ========================================
+    // Dream Consolidation
+    // ========================================
+    subgraph cluster_dream {
+        label="야간 통합 (autoDream)";
+        style=filled;
+        color="#F3E5F5";
+        fillcolor="#F3E5F5";
+        penwidth=2;
+
+        dream_phase4 [label="Phase 4: Prune & Index\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nMEMORY.md를 200줄 AND ~25KB\n이하로 유지\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n• 부실/잘못된 포인터 제거\n• 200자 초과 엔트리 → 토픽 파일로\n• 새로 중요한 메모리 포인터 추가\n• 모순 해결\n• 형식: - [Title](f.md) — hook", fillcolor="#CE93D8"];
+    }
+
+    // ========================================
+    // Feature Gates
+    // ========================================
+    subgraph cluster_gates {
+        label="Feature Gates";
+        style=filled;
+        color="#F5F5F5";
+        fillcolor="#F5F5F5";
+        penwidth=2;
+
+        gates [label="Feature Flag 매핑\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nKAIROS              → 일일 로그 모드\nTEAMMEM             → 팀 메모리\nEXTRACT_MEMORIES    → 백그라운드 추출\ntengu_passport_quail → 추출 메인 게이트\ntengu_moth_copse     → 인덱스 주입 스킵\n                       (prefetch 대신 사용)\ntengu_coral_fern     → 과거 컨텍스트 검색\ntengu_bramble_lintel → 추출 스로틀 (기본 1)\ntengu_herring_clock  → 팀 메모리 코호트\ntengu_slate_thimble  → 비대화 세션 추출", fillcolor="#E0E0E0", shape=component];
+    }
+
+    // ========================================
+    // EDGES: Main flow
+    // ========================================
+
+    // Identity → Truncation
+    identity -> trunc_input [label="로드 시\n트렁케이션", penwidth=2, color="#E65100"];
+
+    // Types → Frontmatter → Save
+    type_user -> frontmatter [style=dashed, color="#2E7D32"];
+    type_feedback -> frontmatter [style=dashed, color="#2E7D32"];
+    type_project -> frontmatter [style=dashed, color="#2E7D32"];
+    type_reference -> frontmatter [style=dashed, color="#2E7D32"];
+    frontmatter -> save_step1 [label="파일 형식", penwidth=1.5, color="#00695C"];
+    save_step2 -> identity [label="인덱스에\n포인터 추가", penwidth=2, color="#1565C0"];
+
+    // Dispatch → various modes
+    dispatch_auto_result -> identity [label="MEMORY.md\n내용 포함", style=dashed, color="#C62828"];
+    dispatch_kairos_result -> identity [label="읽기 전용\n참조", style=dashed, color="#C62828"];
+
+    // Path → Dispatch
+    path_enabled -> dispatch_start [label="활성화 여부", penwidth=1.5, color="#33691E"];
+    path_entry -> identity [label="경로 제공", style=dashed, color="#33691E"];
+
+    // Recall pipeline → Identity
+    recall_scan -> identity [label="MEMORY.md\n자체는 제외", style=dashed, color="#4527A0"];
+
+    // Extraction → Save process
+    extract_prompt -> save_step1 [label="토픽 파일\n생성/수정", penwidth=1.5, color="#00695C"];
+    extract_prompt -> save_step2 [label="인덱스\n업데이트", penwidth=1.5, color="#1565C0"];
+    extract_skip -> extract_prompt [label="No (추출 진행)"];
+
+    // Dream → Identity
+    dream_phase4 -> identity [label="인덱스\n정리/축소", penwidth=2, color="#7B1FA2"];
+
+    // Gates
+    gates -> dispatch_kairos [style=dashed, color="#616161", label="KAIROS"];
+    gates -> dispatch_team [style=dashed, color="#616161", label="TEAMMEM"];
+    gates -> extract_skip [style=dashed, color="#616161", label="tengu_passport_quail"];
+    gates -> recall_sonnet [style=dashed, color="#616161", label="tengu_moth_copse"];
+
+    // Not save → types (constraint)
+    not_save -> type_user [style=dashed, color="#C62828", label="제외 규칙 적용"];
+}

@@ -1,0 +1,165 @@
+digraph MemorySystemVerified {
+  rankdir=TB;
+  fontname="Arial";
+  fontsize=12;
+  node [fontname="Arial", fontsize=10, style=filled, shape=box];
+  edge [fontname="Arial", fontsize=9, color="#555555"];
+  bgcolor="white";
+  labelloc=t;
+  label="Claude Code Memory System (Code-Verified)";
+  pad=0.4;
+  nodesep=0.5;
+  ranksep=0.7;
+
+  user_turn [label="User turn\n(messages + tool results)", shape=oval, fillcolor="#E3F2FD"];
+  prompt_builder [label="System prompt build\nconstants/prompts.ts", fillcolor="#E8F5E9"];
+  stop_hooks [label="Turn-end hooks\nquery/stopHooks.ts", fillcolor="#FFF3E0"];
+
+  subgraph cluster_prompt {
+    label="Prompt / Recall Layer";
+    color="#C8E6C9";
+    style=filled;
+    fillcolor="#F1F8E9";
+
+    load_memory_prompt [label="loadMemoryPrompt()\nmemdir/memdir.ts", fillcolor="#AED581"];
+    build_lines [label="buildMemoryLines()\n4 memory types\n2-step save guidance", fillcolor="#C5E1A5"];
+    build_combined [label="buildCombinedMemoryPrompt()\nprivate + team", fillcolor="#C5E1A5"];
+    daily_log_prompt [label="buildAssistantDailyLogPrompt()\nKAIROS daily-log mode", fillcolor="#C5E1A5"];
+    claudemd [label="claudemd.ts\nloads AutoMem / TeamMem entrypoints", fillcolor="#DCEDC8"];
+    filter_injected [label="filterInjectedMemoryFiles()\nif tengu_moth_copse on:\ndo not inject AutoMem/TeamMem index", fillcolor="#DCEDC8"];
+    prefetch [label="Relevant memory prefetch\nattachments.ts", fillcolor="#DCEDC8"];
+    recall_scan [label="scanMemoryFiles()\nfrontmatter-only scan\nmax 200 files", fillcolor="#DCEDC8"];
+    recall_select [label="findRelevantMemories()\nSonnet sideQuery\nselect up to 5 files", fillcolor="#AED581"];
+    recall_read [label="readMemoriesForSurfacing()\nread selected files only\nfreshness warning for old memories", fillcolor="#DCEDC8"];
+  }
+
+  subgraph cluster_storage {
+    label="Persistent Memory Storage";
+    color="#BBDEFB";
+    style=filled;
+    fillcolor="#E3F2FD";
+
+    paths [label="paths.ts\ngetAutoMemPath()\npriority:\n1. CLAUDE_COWORK_MEMORY_PATH_OVERRIDE\n2. trusted settings autoMemoryDirectory\n3. ~/.claude/projects/<git-root>/memory/", fillcolor="#90CAF9"];
+    team_paths [label="teamMemPaths.ts\ngetTeamMemPath()\npath traversal + symlink validation", fillcolor="#90CAF9"];
+    auto_index [label="auto MEMORY.md\nindex only\nmax 200 lines\nmax ~25,000 chars in code", shape=note, fillcolor="#BBDEFB"];
+    team_index [label="team/MEMORY.md\nindex only\nsame truncation rules", shape=note, fillcolor="#BBDEFB"];
+    topic_files [label="topic memory files (*.md)\nfrontmatter:\nname / description / type\nuser | feedback | project | reference", shape=note, fillcolor="#BBDEFB"];
+    daily_logs [label="logs/YYYY/MM/YYYY-MM-DD.md\nappend-only daily log\nKAIROS mode", shape=note, fillcolor="#BBDEFB"];
+  }
+
+  subgraph cluster_extract {
+    label="Background Extraction";
+    color="#FFE0B2";
+    style=filled;
+    fillcolor="#FFF3E0";
+
+    extract_init [label="initExtractMemories()", fillcolor="#FFCC80"];
+    extract_run [label="executeExtractMemories()\nservices/extractMemories", fillcolor="#FFB74D"];
+    extract_guard [label="Guards\n- main agent only\n- tengu_passport_quail\n- auto memory enabled\n- not remote\n- skip if main agent already wrote memory", shape=diamond, fillcolor="#FFE0B2"];
+    extract_throttle [label="Turn throttle\nturnsSinceLastExtraction\nGB: tengu_bramble_lintel\ndefault = 1", shape=diamond, fillcolor="#FFE0B2"];
+    extract_prompt [label="Extraction prompt\nrecent messages only\nmanifest pre-injected\nmaxTurns = 5", fillcolor="#FFCC80"];
+    extract_tools [label="createAutoMemCanUseTool()\nallow:\nRead / Grep / Glob\nread-only Bash\nEdit/Write only inside auto memory path", fillcolor="#FFE0B2"];
+  }
+
+  subgraph cluster_dream {
+    label="Auto Dream Consolidation";
+    color="#E1BEE7";
+    style=filled;
+    fillcolor="#F3E5F5";
+
+    dream_init [label="initAutoDream()", fillcolor="#CE93D8"];
+    dream_run [label="executeAutoDream()", fillcolor="#BA68C8"];
+    dream_gates [label="Gate order\n1. enabled + not remote + not KAIROS\n2. >= 24h since last consolidation\n3. >= 5 sessions touched\n4. lock acquired\n5. 10 min scan throttle", shape=diamond, fillcolor="#E1BEE7"];
+    dream_prompt [label="buildConsolidationPrompt()\nOrient -> Gather -> Consolidate -> Prune & Index", fillcolor="#D1C4E9"];
+    dream_lock [label="consolidationLock.ts\nfile-based lock + rollback", fillcolor="#E1BEE7"];
+  }
+
+  subgraph cluster_team {
+    label="Team Memory Sync";
+    color="#F8BBD0";
+    style=filled;
+    fillcolor="#FCE4EC";
+
+    team_enabled [label="TEAMMEM + tengu_herring_clock", shape=diamond, fillcolor="#F8BBD0"];
+    team_watcher [label="startTeamMemoryWatcher()\ninitial pull -> fs.watch(recursive)", fillcolor="#F48FB1"];
+    team_push [label="pushTeamMemory()\n2s debounce\nretry suppression for permanent failures", fillcolor="#F8BBD0"];
+    team_pull [label="pullTeamMemory()", fillcolor="#F8BBD0"];
+    team_api [label="API\nGET /team_memory\nGET ?view=hashes\nPUT upsert delta", shape=component, fillcolor="#FCE4EC"];
+    team_limits [label="Client-side limits\n250KB max file\n200KB max PUT body\nlocal delete does NOT delete server copy", shape=note, fillcolor="#FCE4EC"];
+    secret_guard [label="secretScanner + teamMemSecretGuard\nblock secret writes to team memory", fillcolor="#F8BBD0"];
+  }
+
+  subgraph cluster_session {
+    label="Session Memory (Separate from memdir)";
+    color="#B3E5FC";
+    style=filled;
+    fillcolor="#E1F5FE";
+
+    session_init [label="initSessionMemory()", fillcolor="#81D4FA"];
+    session_hook [label="post-sampling hook\nservices/SessionMemory", fillcolor="#4FC3F7"];
+    session_thresholds [label="Default thresholds\ninit at 10,000 tokens\nupdate every +5,000 tokens\nor after 3 tool calls\n(token threshold always required)", shape=diamond, fillcolor="#B3E5FC"];
+    session_file [label="session memory file\n10-section template\nmax section ~2000 tokens\ntotal ~12000 tokens", shape=note, fillcolor="#B3E5FC"];
+  }
+
+  user_turn -> prompt_builder;
+  user_turn -> stop_hooks;
+
+  prompt_builder -> load_memory_prompt;
+  prompt_builder -> claudemd;
+  prompt_builder -> filter_injected;
+  prompt_builder -> prefetch;
+
+  load_memory_prompt -> build_lines [label="auto only"];
+  load_memory_prompt -> build_combined [label="TEAMMEM on"];
+  load_memory_prompt -> daily_log_prompt [label="KAIROS + auto memory"];
+
+  claudemd -> auto_index;
+  claudemd -> team_index;
+  filter_injected -> auto_index [style=dashed, label="drop from injected context"];
+  filter_injected -> team_index [style=dashed, label="drop from injected context"];
+  prefetch -> recall_scan;
+  recall_scan -> recall_select;
+  recall_select -> recall_read;
+  recall_read -> topic_files;
+
+  paths -> auto_index;
+  paths -> topic_files;
+  paths -> daily_logs;
+  paths -> team_paths;
+  team_paths -> team_index;
+
+  stop_hooks -> extract_run;
+  stop_hooks -> dream_run;
+
+  extract_init -> extract_run;
+  extract_run -> extract_guard;
+  extract_guard -> extract_throttle [label="pass"];
+  extract_throttle -> extract_prompt [label="run"];
+  extract_prompt -> extract_tools;
+  extract_tools -> topic_files [label="write/update"];
+  extract_tools -> auto_index [label="index update"];
+  extract_prompt -> recall_scan [style=dashed, label="manifest preload"];
+
+  dream_init -> dream_run;
+  dream_run -> dream_gates;
+  dream_gates -> dream_lock [label="pass"];
+  dream_lock -> dream_prompt;
+  dream_prompt -> topic_files [label="merge / prune / rewrite"];
+  dream_prompt -> auto_index [label="prune index"];
+  dream_prompt -> daily_logs [label="read recent logs"];
+
+  team_enabled -> team_watcher;
+  team_paths -> team_watcher;
+  team_watcher -> team_pull;
+  team_watcher -> team_push;
+  team_pull -> team_api;
+  team_push -> team_api;
+  team_push -> team_limits;
+  secret_guard -> team_push [label="write protection"];
+  team_push -> team_index [label="sync local team dir"];
+  team_push -> topic_files [label="team/*.md subset"];
+
+  session_init -> session_hook;
+  session_hook -> session_thresholds;
+  session_thresholds -> session_file [label="forked agent updates notes"];
+}

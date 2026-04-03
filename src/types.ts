@@ -1,5 +1,6 @@
 export type Tab = string;
 export type Format = 'SINGLE' | 'BATCH';
+export type ClaudeKind = 'note' | 'graph' | 'draft';
 
 export interface ContentEntry {
   id: string;
@@ -29,4 +30,22 @@ export interface TabMeta {
 export interface Manifest {
   tabs: TabMeta[];
   entries: ContentEntry[];
+}
+
+export interface ClaudeEntry extends ContentEntry {
+  kind: ClaudeKind;
+  section: string;
+  sourcePath: string;
+}
+
+export interface ClaudeSectionMeta {
+  id: string;
+  label: string;
+  count: number;
+}
+
+export interface ClaudeManifest {
+  generatedAt: string;
+  sections: ClaudeSectionMeta[];
+  entries: ClaudeEntry[];
 }

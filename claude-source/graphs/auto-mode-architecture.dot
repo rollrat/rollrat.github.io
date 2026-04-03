@@ -1,0 +1,121 @@
+digraph ClaudeCodeAutoModeArchitecture {
+    // Global settings
+    rankdir=TB;
+    fontname="Helvetica";
+    fontsize=12;
+    node [fontname="Helvetica", fontsize=10, style=filled, shape=box, penwidth=1.2];
+    edge [fontname="Helvetica", fontsize=8, color="#555555"];
+    bgcolor="white";
+    label="Claude Code - Auto Mode Structure";
+    labelloc=t;
+    labeljust=c;
+    fontsize=18;
+    pad=0.5;
+
+    // ========================================
+    // Cluster: Entry Points and UX
+    // ========================================
+    subgraph cluster_entry {
+        label="Entry Points and UX";
+        style=filled;
+        color="#E8F5E9";
+        fillcolor="#E8F5E9";
+
+        main_tsx [label="src/main.tsx\n(CLI intent,\ncommand registration,\nstartup gate check)", fillcolor="#66BB6A"];
+        auto_cli [label="src/cli/handlers/autoMode.ts\n(defaults / config /\ncritique commands)", fillcolor="#81C784"];
+        interactive_helpers [label="src/interactiveHelpers.tsx\n(startup opt-in dialog)", fillcolor="#A5D6A7"];
+        prompt_input [label="src/components/PromptInput/PromptInput.tsx\n(first in-session auto entry,\ndebounced dialog trigger)", fillcolor="#A5D6A7"];
+        auto_dialog [label="src/components/AutoModeOptInDialog.tsx\n(accept / decline UI,\npersist opt-in)", fillcolor="#81C784"];
+        repl_tsx [label="src/screens/REPL.tsx\n(in-session warning,\nauto availability reactions)", fillcolor="#A5D6A7"];
+    }
+
+    // ========================================
+    // Cluster: Gate, Settings, and State
+    // ========================================
+    subgraph cluster_gate {
+        label="Gate, Settings, and State";
+        style=filled;
+        color="#E3F2FD";
+        fillcolor="#E3F2FD";
+
+        permission_setup [label="src/utils/permissions/permissionSetup.ts\n(gate checks,\nmode transitions,\nplan-mode auto semantics)", fillcolor="#64B5F6"];
+        auto_state [label="src/utils/permissions/autoModeState.ts\n(active / flagCli /\ncircuitBroken)", fillcolor="#90CAF9"];
+        bootstrap_state [label="src/bootstrap/state.ts\n(exit-attachment latch,\nhandleAutoModeTransition)", fillcolor="#90CAF9"];
+        settings_ts [label="src/utils/settings/settings.ts\n(hasAutoModeOptIn,\ngetUseAutoModeDuringPlan,\ngetAutoModeConfig)", fillcolor="#90CAF9"];
+        growthbook_cfg [label="tengu_auto_mode_config\n(enabled / disableFastMode)\n(dynamic config)", shape=ellipse, fillcolor="#BBDEFB"];
+        model_gate [label="Model support gate\n(getMainLoopModel +\nmodelSupportsAutoMode)", shape=ellipse, fillcolor="#BBDEFB"];
+    }
+
+    // ========================================
+    // Cluster: Classifier Runtime
+    // ========================================
+    subgraph cluster_runtime {
+        label="Classifier Runtime";
+        style=filled;
+        color="#FCE4EC";
+        fillcolor="#FCE4EC";
+
+        permissions_ts [label="src/utils/permissions/permissions.ts\n(auto allowlist fast path,\nclassifier invocation)", fillcolor="#F48FB1"];
+        classifier_decision [label="src/utils/permissions/classifierDecision.ts\n(safe-tool allowlist)", fillcolor="#F8BBD0"];
+        yolo_classifier [label="src/utils/permissions/yoloClassifier.ts\n(prompt build,\naction formatting,\nclassifier API)", fillcolor="#F48FB1"];
+        tool_execution [label="src/services/tools/toolExecution.ts\n(await permission decision,\nhandle classifier denials)", fillcolor="#F8BBD0"];
+        agent_handoff [label="src/tools/AgentTool/agentToolUtils.ts\n(sub-agent handoff review)", fillcolor="#F8BBD0"];
+        side_query [label="sideQuery()\n(used by critique only)", shape=ellipse, fillcolor="#FCE4EC"];
+    }
+
+    // ========================================
+    // Cluster: Conversation Signals
+    // ========================================
+    subgraph cluster_signals {
+        label="Conversation Signals";
+        style=filled;
+        color="#FFF3E0";
+        fillcolor="#FFF3E0";
+
+        attachments_ts [label="src/utils/attachments.ts\n(auto_mode /\nauto_mode_exit attachments)", fillcolor="#FFB74D"];
+        session_messages [label="Session messages\n(warning + attachment stream)", shape=ellipse, fillcolor="#FFE0B2"];
+    }
+
+    // ========================================
+    // EDGES: Entry and UX
+    // ========================================
+    main_tsx -> auto_cli [label="register `claude auto-mode`", penwidth=1.5, color="#2E7D32"];
+    main_tsx -> auto_state [label="setAutoModeFlagCli", penwidth=1.5, color="#2E7D32"];
+    main_tsx -> permission_setup [label="startup verify +\nstrip dangerous perms", penwidth=1.5, color="#1565C0"];
+
+    interactive_helpers -> auto_dialog [label="show on startup when mode=auto\nand no persisted opt-in", color="#2E7D32"];
+    prompt_input -> auto_dialog [label="show on first in-session\nauto entry", color="#2E7D32"];
+    auto_dialog -> settings_ts [label="updateSettingsForSource:\nskipAutoPermissionPrompt,\ndefaultMode=auto?", color="#1565C0"];
+    repl_tsx -> session_messages [label="show AUTO_MODE_DESCRIPTION\nwhen entering auto", color="#E65100"];
+    auto_dialog -> repl_tsx [label="shared warning copy", style=dashed, color="#9E9E9E"];
+
+    // ========================================
+    // EDGES: Config and Gate
+    // ========================================
+    settings_ts -> permission_setup [label="opt-in + plan-mode rules", penwidth=1.5, color="#1565C0"];
+    settings_ts -> auto_cli [label="effective autoMode config", color="#1565C0"];
+    settings_ts -> yolo_classifier [label="custom allow / soft_deny /\nenvironment rules", color="#AD1457"];
+    growthbook_cfg -> permission_setup [label="verifyAutoModeGateAccess", color="#1565C0"];
+    model_gate -> permission_setup [label="can enter auto?", color="#1565C0"];
+
+    permission_setup -> auto_state [label="set active / set circuitBroken /\nread CLI intent", penwidth=1.5, color="#1565C0"];
+    permission_setup -> bootstrap_state [label="handleAutoModeTransition +\nsetNeedsAutoModeExitAttachment", penwidth=1.5, color="#1565C0"];
+    permission_setup -> permissions_ts [label="ToolPermissionContext mode +\nstripped dangerous rules", penwidth=1.5, color="#AD1457"];
+
+    // ========================================
+    // EDGES: Runtime Classification
+    // ========================================
+    tool_execution -> permissions_ts [label="await canUseTool /\npermission decision", penwidth=1.5, color="#C62828"];
+    permissions_ts -> classifier_decision [label="allowlist fast path", color="#AD1457"];
+    permissions_ts -> yolo_classifier [label="formatActionForClassifier +\nclassifyYoloAction", penwidth=1.5, color="#AD1457"];
+    agent_handoff -> yolo_classifier [label="classify sub-agent handoff", style=dashed, color="#AD1457"];
+    auto_cli -> yolo_classifier [label="defaults + critique context", color="#AD1457"];
+    auto_cli -> side_query [label="AI critique request", color="#AD1457"];
+
+    // ========================================
+    // EDGES: Attachments and User-visible Signals
+    // ========================================
+    auto_state -> attachments_ts [label="isAutoModeActive()", color="#E65100"];
+    bootstrap_state -> attachments_ts [label="needsAutoModeExitAttachment()", color="#E65100"];
+    attachments_ts -> session_messages [label="append auto_mode /\nauto_mode_exit", penwidth=1.5, color="#E65100"];
+}

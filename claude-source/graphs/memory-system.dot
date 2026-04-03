@@ -1,0 +1,246 @@
+digraph MemorySystem {
+    // Global settings
+    rankdir=TB;
+    fontname="Malgun Gothic";
+    fontsize=12;
+    node [fontname="Malgun Gothic", fontsize=10, style=filled, shape=box, penwidth=1.2];
+    edge [fontname="Malgun Gothic", fontsize=8, color="#555555"];
+    bgcolor="white";
+    label="Claude Code - Memory System Architecture";
+    labelloc=t;
+    labeljust=c;
+    fontsize=18;
+    pad=0.5;
+    compound=true;
+    nodesep=0.6;
+    ranksep=0.8;
+
+    // ========================================
+    // Trigger: User Conversation
+    // ========================================
+    conversation [label="User Conversation\n(Messages, Tool Calls)", shape=doubleoctagon, fillcolor="#E8EAF6", penwidth=2];
+
+    // ========================================
+    // Layer 1: Persistent Memory (memdir/)
+    // ========================================
+    subgraph cluster_memdir {
+        label="Layer 1: Persistent Memory (memdir/)";
+        style=filled;
+        color="#E3F2FD";
+        fillcolor="#E3F2FD";
+        penwidth=2;
+
+        memdir_ts [label="memdir.ts\n━━━━━━━━━━━━━━━\nbuildMemoryLines()\nbuildMemoryPrompt()\nloadMemoryPrompt()\ntruncateEntrypointContent()", fillcolor="#64B5F6"];
+
+        paths_ts [label="paths.ts\n━━━━━━━━━━━━━━━\ngetAutoMemPath()\n~/.claude/projects/{slug}/memory/\nEnv override → settings.json → default", fillcolor="#90CAF9"];
+
+        memory_types [label="memoryTypes.ts\n━━━━━━━━━━━━━━━\n4 Types:\n• user (역할/선호도)\n• feedback (작업 피드백)\n• project (프로젝트 상태)\n• reference (외부 리소스)", fillcolor="#BBDEFB", shape=note];
+
+        memory_scan [label="memoryScan.ts\n━━━━━━━━━━━━━━━\nRecursive .md scan\nFrontmatter 파싱 (30줄)\nmtime 기준 정렬\nMax 200 files", fillcolor="#90CAF9"];
+
+        find_relevant [label="findRelevantMemories.ts\n━━━━━━━━━━━━━━━\nSonnet 사이드 쿼리\nManifest 기반 선택 (max 5)\nJSON schema 출력\nTool ref 노이즈 필터링", fillcolor="#64B5F6"];
+
+        memory_age [label="memoryAge.ts\n━━━━━━━━━━━━━━━\nmemoryAgeDays()\n\"47 days ago\" 형식\n부실 메모리 경고 생성", fillcolor="#90CAF9"];
+
+        team_mem_paths [label="teamMemPaths.ts\n━━━━━━━━━━━━━━━\n<autoMemPath>/team/\nSymlink 검증\nPath traversal 방지", fillcolor="#90CAF9"];
+
+        memory_index [label="MEMORY.md\n━━━━━━━━━━━━━━━\nIndex file (200줄 / 25KB)\n한 줄 포인터 목록\n- [Title](file.md) — hook", shape=note, fillcolor="#E3F2FD", penwidth=2, color="#1565C0"];
+
+        memory_files [label="topic_files/*.md\n━━━━━━━━━━━━━━━\n---\nname: ...\ndescription: ...\ntype: user|feedback|project|reference\n---\n본문 (Why + How to apply)", shape=note, fillcolor="#E3F2FD", penwidth=2, color="#1565C0"];
+    }
+
+    // ========================================
+    // Layer 2: Session Memory
+    // ========================================
+    subgraph cluster_session_memory {
+        label="Layer 2: Session Memory (services/SessionMemory/)";
+        style=filled;
+        color="#E8F5E9";
+        fillcolor="#E8F5E9";
+        penwidth=2;
+
+        session_mem [label="sessionMemory.ts\n━━━━━━━━━━━━━━━\nPost-sampling hook\nForked Agent (백그라운드)\nsequential() 래퍼\nauto-compact 설정 연동", fillcolor="#66BB6A"];
+
+        session_prompts [label="prompts.ts\n━━━━━━━━━━━━━━━\n9개 섹션 템플릿:\n# Session Title\n# Current State\n# Task Specification\n# Files and Functions\n# Workflow\n# Errors & Corrections\n# Learnings\n# Key Results\n# Worklog", fillcolor="#A5D6A7", shape=note];
+
+        session_utils [label="sessionMemoryUtils.ts\n━━━━━━━━━━━━━━━\nConfig (GrowthBook):\n• initTokens: ~100K\n• updateInterval: ~50K\n• toolCallsBetween: ~5\nToken estimation: len/4", fillcolor="#81C784"];
+
+        session_trigger [label="트리거 조건\n━━━━━━━━━━━━━━━\n① 100K 토큰 이후 첫 실행\n② 50K 토큰 간격\n③ 5번 tool call 또는\n   tool call 없는 턴", shape=diamond, fillcolor="#C8E6C9"];
+
+        session_limits [label="크기 제한\n━━━━━━━━━━━━━━━\n섹션당: ~2000 tokens\n전체: ~12000 tokens\n커스텀 템플릿:\n~/.claude/session-memory/\n  config/template.md", shape=note, fillcolor="#C8E6C9"];
+    }
+
+    // ========================================
+    // Layer 3: Auto Extract
+    // ========================================
+    subgraph cluster_extract {
+        label="Layer 3: Auto Extract (services/extractMemories/)";
+        style=filled;
+        color="#FFF3E0";
+        fillcolor="#FFF3E0";
+        penwidth=2;
+
+        extract_mem [label="extractMemories.ts\n━━━━━━━━━━━━━━━\ninitExtractMemories()\nClosure-scoped 상태\nturnsSinceLastExtraction\nlastMemoryMessageUuid\nMax 5 turns", fillcolor="#FFB74D"];
+
+        extract_prompts [label="prompts.ts\n━━━━━━━━━━━━━━━\n4-type 분류 지침\nScope: private vs team\n배치 전략:\nTurn 1 → 모든 Read 병렬\nTurn 2 → 모든 Write 병렬", fillcolor="#FFCC80", shape=note];
+
+        extract_flow [label="실행 흐름\n━━━━━━━━━━━━━━━\n① 턴 종료 감지\n② 메인이 이미 썼으면 스킵\n③ Forked Agent 생성\n④ Manifest 사전 주입\n⑤ Read-only + 메모리 Write", shape=diamond, fillcolor="#FFE0B2"];
+
+        extract_tools [label="허용 도구\n━━━━━━━━━━━━━━━\n✓ FileRead, Grep, Glob\n✓ Bash (read-only)\n✓ Edit/Write (메모리 dir만)\n✗ 코드 검증 금지", shape=note, fillcolor="#FFE0B2"];
+    }
+
+    // ========================================
+    // Layer 4: Auto Dream
+    // ========================================
+    subgraph cluster_dream {
+        label="Layer 4: Auto Dream (services/autoDream/)";
+        style=filled;
+        color="#F3E5F5";
+        fillcolor="#F3E5F5";
+        penwidth=2;
+
+        auto_dream [label="autoDream.ts\n━━━━━━━━━━━━━━━\ninitAutoDream()\nDreamTask 생성\nFile-based Lock\n~/.../memory/.dream-lock", fillcolor="#CE93D8"];
+
+        dream_prompt [label="consolidationPrompt.ts\n━━━━━━━━━━━━━━━\n4단계:\n① Orient (스캔)\n② Gather Signal (수집)\n③ Consolidate (통합)\n④ Prune & Index (정리)", fillcolor="#E1BEE7", shape=note];
+
+        dream_gates [label="실행 조건 (cheapest-first)\n━━━━━━━━━━━━━━━\n① Feature gate 확인\n② 24시간 경과 확인\n③ 5+ 세션 누적 확인\n④ Lock 획득 시도\n⑤ 10분 스캔 주기", shape=diamond, fillcolor="#EDE7F6"];
+
+        dream_config [label="config.ts\n━━━━━━━━━━━━━━━\nGate: tengu_onyx_plover\nminHours: 24\nminSessions: 5", fillcolor="#D1C4E9"];
+    }
+
+    // ========================================
+    // Layer 5: Team Sync
+    // ========================================
+    subgraph cluster_team {
+        label="Layer 5: Team Memory Sync (services/teamMemorySync/)";
+        style=filled;
+        color="#FCE4EC";
+        fillcolor="#FCE4EC";
+        penwidth=2;
+
+        team_sync [label="index.ts\n━━━━━━━━━━━━━━━\nSyncState (ETag, checksums)\nPull: 서버 우선 (키 단위)\nPush: 해시 델타 업로드\nBatch: 200KB 분할", fillcolor="#F48FB1"];
+
+        team_watcher [label="watcher.ts\n━━━━━━━━━━━━━━━\nfs.watch({recursive: true})\n2초 디바운스\n시작 시 Pull → Watch\n영구 실패 시 Suppress", fillcolor="#F48FB1"];
+
+        team_api [label="API Endpoints\n━━━━━━━━━━━━━━━\nGET .../team_memory?repo=\n  → Full data + checksums\nGET ?view=hashes\n  → Metadata only (경량)\nPUT → Upsert (delta)", shape=note, fillcolor="#F8BBD0"];
+
+        secret_scanner [label="secretScanner.ts\n━━━━━━━━━━━━━━━\nGitleaks 룰 기반\n업로드 전 시크릿 검출\nSkipped files 기록\n차단이 아닌 스킵 처리", fillcolor="#F48FB1"];
+
+        team_limits [label="크기 제한\n━━━━━━━━━━━━━━━\n파일당: 250KB max\n배치당: 200KB max\n조직별 entry count 제한\n재시도: 3회 (exponential)", shape=note, fillcolor="#F8BBD0"];
+    }
+
+    // ========================================
+    // Relevance Search Detail
+    // ========================================
+    subgraph cluster_relevance {
+        label="Relevance Search Pipeline";
+        style=filled;
+        color="#FFFDE7";
+        fillcolor="#FFFDE7";
+        penwidth=2;
+
+        rel_step1 [label="① 디렉토리 스캔\nFrontmatter만 읽기\n(파일당 30줄)", fillcolor="#FFF59D", shape=ellipse];
+        rel_step2 [label="② Manifest 생성\n[type] filename (age): desc\n최대 200개", fillcolor="#FFF59D", shape=ellipse];
+        rel_step3 [label="③ Sonnet 사이드 쿼리\n\"Select up to 5 useful\nmemories\"", fillcolor="#FFF176", shape=ellipse];
+        rel_step4 [label="④ Tool ref 노이즈 필터\n최근 사용 도구 문서 제외", fillcolor="#FFF59D", shape=ellipse];
+        rel_step5 [label="⑤ 선택된 파일만\n전체 내용 로드", fillcolor="#FFF59D", shape=ellipse];
+
+        rel_step1 -> rel_step2 -> rel_step3 -> rel_step4 -> rel_step5;
+    }
+
+    // ========================================
+    // Feature Gates
+    // ========================================
+    subgraph cluster_gates {
+        label="Feature Gates";
+        style=filled;
+        color="#EFEBE9";
+        fillcolor="#EFEBE9";
+        penwidth=2;
+
+        gates [label="Feature Flag 관리\n━━━━━━━━━━━━━━━━━━━━━━\ntengu_herring_clock   → Team Memory\ntengu_coral_fern      → Memory Recall\ntengu_passport_quail  → Extract Memories\ntengu_onyx_plover     → Auto Dream\ntengu_session_memory  → Session Memory\ntengu_moth_copse      → Skip Index\ntengu_sm_config       → Session Config\ntengu_bramble_lintel  → Extract Throttle", fillcolor="#D7CCC8", shape=component];
+    }
+
+    // ========================================
+    // Storage
+    // ========================================
+    subgraph cluster_storage {
+        label="Storage";
+        style=filled;
+        color="#E0F2F1";
+        fillcolor="#E0F2F1";
+        penwidth=2;
+
+        disk [label="~/.claude/projects/{slug}/memory/\n━━━━━━━━━━━━━━━━━━━━━━━\nMEMORY.md          (인덱스)\n*.md               (토픽 메모리)\nteam/              (팀 메모리)\n.dream-lock        (Dream 락)\nlogs/YYYY/MM/DD.md (일일 로그)", shape=folder, fillcolor="#80CBC4"];
+
+        cloud_api [label="Anthropic API\n━━━━━━━━━━━━━━━\n/api/claude_code/team_memory\nETag 기반 캐싱\nsha256 체크섬", shape=cylinder, fillcolor="#80CBC4"];
+    }
+
+    // ========================================
+    // EDGES: Main data flow
+    // ========================================
+
+    // Conversation triggers everything
+    conversation -> session_mem [label="post-sampling\nhook", penwidth=2, color="#2E7D32"];
+    conversation -> extract_mem [label="턴 종료 시\nfire-and-forget", penwidth=2, color="#E65100"];
+    conversation -> memdir_ts [label="직접 메모리\n읽기/쓰기", penwidth=2, color="#1565C0"];
+
+    // Session Memory flow
+    session_mem -> session_prompts [label="템플릿 적용"];
+    session_mem -> session_utils [label="config 조회"];
+    session_utils -> session_trigger;
+    session_mem -> session_limits;
+
+    // Extract flow
+    extract_mem -> extract_prompts [label="지침 로드"];
+    extract_mem -> extract_flow;
+    extract_mem -> extract_tools;
+    extract_flow -> memory_files [label="메모리 파일\n생성/수정", penwidth=2, color="#E65100"];
+    extract_flow -> memory_index [label="인덱스 업데이트", color="#E65100"];
+
+    // Memdir internal
+    memdir_ts -> paths_ts;
+    memdir_ts -> memory_scan;
+    memdir_ts -> memory_index [label="로드 & 트렁케이션"];
+    memory_scan -> find_relevant [label="manifest 전달"];
+    find_relevant -> memory_age [label="age 정보"];
+    find_relevant -> memory_files [label="선택된 파일\n전체 로드", penwidth=2, color="#1565C0"];
+    memory_types -> memory_files [style=dashed, label="스키마"];
+    paths_ts -> team_mem_paths;
+
+    // Dream flow
+    auto_dream -> dream_prompt [label="프롬프트 로드"];
+    auto_dream -> dream_gates;
+    auto_dream -> dream_config;
+    dream_gates -> memory_files [label="통합/정리", penwidth=2, color="#7B1FA2"];
+    dream_gates -> memory_index [label="인덱스 정리", color="#7B1FA2"];
+
+    // Team sync flow
+    team_watcher -> team_sync [label="변경 감지"];
+    team_sync -> team_api [label="Pull/Push"];
+    team_sync -> secret_scanner [label="업로드 전 스캔"];
+    team_sync -> team_limits;
+    team_mem_paths -> team_watcher [label="감시 경로", style=dashed];
+
+    // Storage connections
+    memory_files -> disk [penwidth=2, color="#00695C"];
+    memory_index -> disk [penwidth=2, color="#00695C"];
+    team_api -> cloud_api [penwidth=2, color="#00695C"];
+    team_sync -> disk [label="team/ 디렉토리", color="#00695C"];
+
+    // Feature gates
+    gates -> session_mem [style=dashed, color="#795548", label="tengu_session_memory"];
+    gates -> extract_mem [style=dashed, color="#795548", label="tengu_passport_quail"];
+    gates -> auto_dream [style=dashed, color="#795548", label="tengu_onyx_plover"];
+    gates -> team_sync [style=dashed, color="#795548", label="tengu_herring_clock"];
+    gates -> find_relevant [style=dashed, color="#795548", label="tengu_coral_fern"];
+
+    // Relevance pipeline connection
+    memory_scan -> rel_step1 [label="스캔 시작", style=dashed, color="#F9A825"];
+    rel_step5 -> conversation [label="관련 메모리\n컨텍스트 주입", penwidth=2, color="#F9A825"];
+
+    // Cross-layer interactions
+    session_mem -> memdir_ts [label="auto-compact 시\n세션 메모리 삽입", style=dashed, color="#888888"];
+    extract_mem -> session_mem [label="메인이 이미 썼으면\n추출 스킵", style=dashed, color="#888888"];
+    auto_dream -> extract_mem [label="여러 세션\n메모리 통합", style=dashed, color="#888888"];
+}

@@ -1,0 +1,162 @@
+digraph MemoryMdLogicVerified {
+  rankdir=TB;
+  fontname="Arial";
+  fontsize=12;
+  node [fontname="Arial", fontsize=10, style=filled, shape=box];
+  edge [fontname="Arial", fontsize=9, color="#555555"];
+  bgcolor="white";
+  labelloc=t;
+  label="Claude Code MEMORY.md Logic (Code-Verified)";
+  pad=0.4;
+  nodesep=0.45;
+  ranksep=0.7;
+
+  subgraph cluster_identity {
+    label="MEMORY.md Identity";
+    color="#90CAF9";
+    style=filled;
+    fillcolor="#E3F2FD";
+
+    identity [label="MEMORY.md\nindex file, not the memory body\nentries should be one-line pointers\nmemory bodies live in topic files", fillcolor="#64B5F6"];
+    limits [label="Code limits\nMAX_ENTRYPOINT_LINES = 200\nMAX_ENTRYPOINT_BYTES = 25,000\nnote: implementation currently uses string length,\nnot true UTF-8 byte counting", shape=note, fillcolor="#BBDEFB"];
+    truncation [label="truncateEntrypointContent()\n1. trim\n2. line-truncate first\n3. then cut at last newline before char cap\n4. append WARNING note", fillcolor="#90CAF9"];
+  }
+
+  subgraph cluster_save {
+    label="How Memories Are Saved";
+    color="#80CBC4";
+    style=filled;
+    fillcolor="#E0F2F1";
+
+    type_taxonomy [label="4 memory types\nuser\nfeedback\nproject\nreference", fillcolor="#4DB6AC"];
+    not_save [label="Do NOT save\ncode patterns\narchitecture\nfile paths\ngit history\ndebug recipes\nephemeral task state", shape=note, fillcolor="#B2DFDB"];
+    frontmatter [label="Topic file frontmatter\nname\ndescription\ntype", shape=note, fillcolor="#B2DFDB"];
+    step1 [label="Step 1\nwrite or update a topic file", fillcolor="#4DD0E1"];
+    step2 [label="Step 2\nadd/update pointer in MEMORY.md", fillcolor="#4DD0E1"];
+  }
+
+  subgraph cluster_dispatch {
+    label="loadMemoryPrompt() Dispatch";
+    color="#F48FB1";
+    style=filled;
+    fillcolor="#FCE4EC";
+
+    enabled [label="isAutoMemoryEnabled()\npriority:\n1. CLAUDE_CODE_DISABLE_AUTO_MEMORY\n2. CLAUDE_CODE_SIMPLE (--bare)\n3. remote without persistent storage\n4. settings.autoMemoryEnabled\n5. default enabled", fillcolor="#F8BBD0"];
+    resolve_path [label="getAutoMemPath()\npriority:\n1. env override\n2. trusted settings override\n3. ~/.claude/projects/<git-root>/memory/", fillcolor="#F8BBD0"];
+    dispatch [label="loadMemoryPrompt()", shape=ellipse, fillcolor="#F48FB1"];
+    branch_kairos [label="KAIROS + auto enabled + kairos active", shape=diamond, fillcolor="#F8BBD0"];
+    branch_team [label="TEAMMEM + isTeamMemoryEnabled()", shape=diamond, fillcolor="#F8BBD0"];
+    branch_auto [label="auto enabled", shape=diamond, fillcolor="#F8BBD0"];
+    kairos_result [label="buildAssistantDailyLogPrompt()\nnew memories go to daily logs\nMEMORY.md remains distilled index", fillcolor="#EF9A9A"];
+    team_result [label="buildCombinedMemoryPrompt()\nprivate + team dirs\nscope guidance included", fillcolor="#EF9A9A"];
+    auto_result [label="buildMemoryLines()\nauto-memory guidance only", fillcolor="#EF9A9A"];
+    disabled [label="return null", fillcolor="#FFCDD2"];
+  }
+
+  subgraph cluster_loading {
+    label="How MEMORY.md Gets Into Context";
+    color="#DCE775";
+    style=filled;
+    fillcolor="#F9FBE7";
+
+    claudemd [label="claudemd.ts\nreads AutoMem / TeamMem entrypoints", fillcolor="#DCE775"];
+    auto_entry [label="getAutoMemEntrypoint()\n<memory>/MEMORY.md", fillcolor="#F0F4C3"];
+    team_entry [label="getTeamMemEntrypoint()\n<memory>/team/MEMORY.md", fillcolor="#F0F4C3"];
+    transform [label="parseMemoryFileContent()\nstrip frontmatter\nstrip HTML comments\ntruncate MEMORY.md content", fillcolor="#F0F4C3"];
+    moth [label="tengu_moth_copse", shape=diamond, fillcolor="#E6EE9C"];
+    filter_index [label="filterInjectedMemoryFiles()\nAutoMem/TeamMem index removed\nfrom direct context injection", fillcolor="#F0F4C3"];
+    relevant_prefetch [label="relevant memory prefetch\nattachments.ts", fillcolor="#DCE775"];
+  }
+
+  subgraph cluster_recall {
+    label="Relevant Memory Recall";
+    color="#B39DDB";
+    style=filled;
+    fillcolor="#EDE7F6";
+
+    scan [label="scanMemoryFiles()\nrecurse .md except MEMORY.md\nfrontmatter scan only\nsort newest first\nmax 200", fillcolor="#D1C4E9"];
+    manifest [label="formatMemoryManifest()\n- [type] filename (ISO): description", fillcolor="#D1C4E9"];
+    select [label="findRelevantMemories()\nSonnet sideQuery\nselect up to 5 filenames\nskip already-surfaced paths", fillcolor="#9575CD"];
+    read_selected [label="readMemoriesForSurfacing()\nload selected files only\nline and size caps", fillcolor="#D1C4E9"];
+    freshness [label="memoryFreshnessText()/Note()\nif memory > 1 day old:\nwarn that it may be stale", shape=note, fillcolor="#D1C4E9"];
+  }
+
+  subgraph cluster_team {
+    label="Team Memory Details";
+    color="#F8BBD0";
+    style=filled;
+    fillcolor="#FCE4EC";
+
+    team_enabled [label="isTeamMemoryEnabled()\nrequires auto memory + GB gate", fillcolor="#F8BBD0"];
+    team_security [label="validateTeamMemWritePath()\nvalidateTeamMemKey()\nblocks null byte, encoded traversal,\nUnicode normalization tricks,\nsymlink escape", shape=note, fillcolor="#F8BBD0"];
+    team_sync_note [label="sync semantics\nserver-wins pull\ndelta push upsert\nlocal delete does not delete remote copy", shape=note, fillcolor="#FCE4EC"];
+  }
+
+  subgraph cluster_kairos {
+    label="KAIROS Daily-Log Mode";
+    color="#CE93D8";
+    style=filled;
+    fillcolor="#F3E5F5";
+
+    daily_log [label="logs/YYYY/MM/YYYY-MM-DD.md\nappend-only daily log", fillcolor="#E1BEE7"];
+    auto_dream [label="nightly /dream or autoDream\nconsolidates logs into\ntopic files + MEMORY.md", fillcolor="#CE93D8"];
+  }
+
+  subgraph cluster_claudemd {
+    label="CLAUDE.md Include Note";
+    color="#FFE082";
+    style=filled;
+    fillcolor="#FFF8E1";
+
+    include_note [label="processMemoryFile()\ncurrently pushes parent file first,\nthen included files\n(actual behavior differs from old comment)", shape=note, fillcolor="#FFE082"];
+    external_note [label="project external includes need approval\nuser memory external includes are always allowed", shape=note, fillcolor="#FFE082"];
+  }
+
+  identity -> limits;
+  identity -> truncation;
+
+  type_taxonomy -> frontmatter;
+  not_save -> step1 [style=dashed, label="constraint"];
+  frontmatter -> step1;
+  step1 -> step2;
+  step2 -> identity [label="update index"];
+
+  enabled -> resolve_path;
+  enabled -> dispatch;
+  resolve_path -> dispatch;
+  dispatch -> branch_kairos;
+  branch_kairos -> kairos_result [label="yes"];
+  branch_kairos -> branch_team [label="no"];
+  branch_team -> team_result [label="yes"];
+  branch_team -> branch_auto [label="no"];
+  branch_auto -> auto_result [label="yes"];
+  branch_auto -> disabled [label="no"];
+
+  resolve_path -> auto_entry;
+  team_enabled -> team_entry;
+  claudemd -> auto_entry;
+  claudemd -> team_entry;
+  auto_entry -> transform;
+  team_entry -> transform;
+  transform -> identity [label="index content available"];
+  moth -> filter_index [label="on"];
+  filter_index -> relevant_prefetch;
+
+  relevant_prefetch -> scan;
+  scan -> manifest;
+  manifest -> select;
+  select -> read_selected;
+  read_selected -> freshness;
+
+  kairos_result -> daily_log;
+  daily_log -> auto_dream;
+  auto_dream -> step1 [label="rewrite topic files"];
+  auto_dream -> step2 [label="prune index"];
+
+  team_result -> team_enabled;
+  team_enabled -> team_security;
+  team_enabled -> team_sync_note;
+
+  claudemd -> include_note [style=dashed];
+  claudemd -> external_note [style=dashed];
+}

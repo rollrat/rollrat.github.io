@@ -1,0 +1,192 @@
+digraph SystemPrompts {
+    // Global settings
+    rankdir=TB;
+    fontname="Malgun Gothic";
+    fontsize=12;
+    node [fontname="Malgun Gothic", fontsize=10, style=filled, shape=box, penwidth=1.2];
+    edge [fontname="Malgun Gothic", fontsize=8, color="#555555"];
+    bgcolor="white";
+    label="Claude Code - 핵심 시스템 프롬프트 구조";
+    labelloc=t;
+    labeljust=c;
+    fontsize=18;
+    pad=0.5;
+    compound=true;
+    nodesep=0.5;
+    ranksep=0.7;
+
+    // ========================================
+    // Entry: Priority Chain
+    // ========================================
+    subgraph cluster_priority {
+        label="시스템 프롬프트 우선순위 체인\n(buildEffectiveSystemPrompt)";
+        style=filled;
+        color="#EFEBE9";
+        fillcolor="#EFEBE9";
+        penwidth=2;
+
+        priority_start [label="요청 수신", shape=doubleoctagon, fillcolor="#BCAAA4"];
+        priority_override [label="① Override\n(loop 모드 등)\n→ 단독 반환", fillcolor="#D7CCC8", shape=diamond];
+        priority_coordinator [label="② Coordinator Mode\n(COORDINATOR_MODE flag\n+ env var)", fillcolor="#D7CCC8", shape=diamond];
+        priority_proactive_agent [label="③ Proactive + Agent\n→ default에 Agent 추가", fillcolor="#D7CCC8", shape=diamond];
+        priority_normal [label="④ Agent → Custom → Default\n(일반 우선순위)", fillcolor="#D7CCC8", shape=diamond];
+        priority_append [label="appendSystemPrompt\n(항상 끝에 추가)", fillcolor="#BCAAA4"];
+
+        priority_start -> priority_override [label="있으면"];
+        priority_override -> priority_coordinator [label="없으면"];
+        priority_coordinator -> priority_proactive_agent [label="아니면"];
+        priority_proactive_agent -> priority_normal [label="아니면"];
+        priority_normal -> priority_append;
+    }
+
+    // ========================================
+    // Prefix Variations
+    // ========================================
+    subgraph cluster_prefix {
+        label="시스템 프롬프트 프리픽스\n(system.ts)";
+        style=filled;
+        color="#FFF8E1";
+        fillcolor="#FFF8E1";
+        penwidth=2;
+
+        prefix_default [label="DEFAULT_PREFIX\n\"You are Claude Code,\nAnthropic's official CLI\nfor Claude.\"", fillcolor="#FFE082"];
+        prefix_sdk_cc [label="AGENT_SDK_CC_PREFIX\n\"...running within the\nClaude Agent SDK.\"", fillcolor="#FFE082"];
+        prefix_sdk [label="AGENT_SDK_PREFIX\n\"You are a Claude agent,\nbuilt on Anthropic's\nClaude Agent SDK.\"", fillcolor="#FFE082"];
+
+        prefix_select [label="선택 로직\n━━━━━━━━━━━━━━\nVertex → DEFAULT\nnon-interactive+append → SDK_CC\nnon-interactive → SDK\ndefault → DEFAULT", fillcolor="#FFF59D", shape=note];
+
+        prefix_select -> prefix_default [style=dashed];
+        prefix_select -> prefix_sdk_cc [style=dashed];
+        prefix_select -> prefix_sdk [style=dashed];
+    }
+
+    // ========================================
+    // Static Sections (Cacheable)
+    // ========================================
+    subgraph cluster_static {
+        label="정적 섹션 (캐시 가능, scope: 'global')";
+        style=filled;
+        color="#E3F2FD";
+        fillcolor="#E3F2FD";
+        penwidth=2;
+
+        s1 [label="① Intro Section\n━━━━━━━━━━━━━━\n• AI 정체성 선언\n• 사이버 리스크 지침\n• URL 안전성 안내", fillcolor="#64B5F6"];
+        s2 [label="② System Section\n━━━━━━━━━━━━━━\n• 도구 실행 권한 모델\n• 시스템 리마인더 태그\n• 컨텍스트 압축 설명\n• 훅 피드백 처리", fillcolor="#64B5F6"];
+        s3 [label="③ Doing Tasks Section\n━━━━━━━━━━━━━━\n• 코드 스타일 가이드\n• 보안 (OWASP 방지)\n• 불필요한 리팩토링 금지\n• 추상화 과잉 방지\n[조건부: keepCodingInstructions]", fillcolor="#90CAF9"];
+        s4 [label="④ Actions Section\n━━━━━━━━━━━━━━\n• 가역성/영향 범위 평가\n• 위험 작업 사용자 확인\n• 파괴적 작업 예시 목록\n• 조사 후 삭제 원칙", fillcolor="#64B5F6"];
+        s5 [label="⑤ Using Your Tools\n━━━━━━━━━━━━━━\n• 전용 도구 우선 사용\n  (Read > cat, Edit > sed)\n• Task 도구 활용\n• 병렬 호출 전략\n[조건부: 활성 도구 존재]", fillcolor="#64B5F6"];
+        s6 [label="⑥ Tone and Style\n━━━━━━━━━━━━━━\n• 이모지 자제\n• 간결한 응답\n• file:line 참조 형식\n• owner/repo#N 형식\n• 도구 호출 전 콜론 금지", fillcolor="#64B5F6"];
+        s7 [label="⑦ Output Efficiency\n━━━━━━━━━━━━━━\n• ANT: 상세 산문 가이드\n• 외부: \"핵심만 직접 전달\"\n• 필러 단어 제거\n• 판단이 필요한 것만 출력", fillcolor="#64B5F6"];
+
+        s1 -> s2 -> s3 -> s4 -> s5 -> s6 -> s7 [color="#1565C0", penwidth=1.5];
+    }
+
+    // ========================================
+    // Dynamic Boundary
+    // ========================================
+    boundary [label="═══ SYSTEM_PROMPT_DYNAMIC_BOUNDARY ═══\n(shouldUseGlobalCacheScope일 때만)\n캐시 가능 프리픽스 ↔ 세션별 콘텐츠 분리", shape=parallelogram, fillcolor="#FFCDD2", penwidth=2, color="#C62828"];
+
+    // ========================================
+    // Dynamic Sections
+    // ========================================
+    subgraph cluster_dynamic {
+        label="동적 섹션 (세션별, resolveSystemPromptSections)";
+        style=filled;
+        color="#E8F5E9";
+        fillcolor="#E8F5E9";
+        penwidth=2;
+
+        d1 [label="session_guidance\n━━━━━━━━━━━━━━\n• AskUserQuestion 도구\n• 비대화 세션 힌트\n• Agent/Explore/Plan 안내\n• Skill 도구 안내\n• 검증 에이전트 계약", fillcolor="#66BB6A"];
+        d2 [label="memory\n━━━━━━━━━━━━━━\nloadMemoryPrompt()\nMEMORY.md + 메모리 지침", fillcolor="#81C784"];
+        d3 [label="env_info_simple\n━━━━━━━━━━━━━━\n• 작업 디렉토리, git\n• 플랫폼, 셸, OS\n• 모델명 + ID\n• 지식 컷오프 날짜\n• Claude 모델 패밀리", fillcolor="#66BB6A"];
+        d4 [label="language\n━━━━━━━━━━━━━━\n사용자 언어 설정\n(settings.language)", fillcolor="#A5D6A7"];
+        d5 [label="output_style\n━━━━━━━━━━━━━━\n커스텀 출력 스타일\n(outputStyleConfig)", fillcolor="#A5D6A7"];
+        d6 [label="mcp_instructions ⚡\n━━━━━━━━━━━━━━\nMCP 서버별 지침 블록\n[volatility=true]\n\"서버가 턴 사이에\n연결/해제될 수 있음\"", fillcolor="#FFAB91"];
+        d7 [label="scratchpad\n━━━━━━━━━━━━━━\n임시 파일 디렉토리\n($TMPDIR 사용 안내)", fillcolor="#A5D6A7"];
+        d8 [label="frc\n━━━━━━━━━━━━━━\nFunction Result Clearing\n(CACHED_MICROCOMPACT)", fillcolor="#A5D6A7"];
+        d9 [label="summarize_tool_results\n━━━━━━━━━━━━━━\n도구 결과에서 중요 정보\n즉시 기록 리마인더", fillcolor="#A5D6A7"];
+        d10 [label="ant_model_override\n━━━━━━━━━━━━━━\nANT 전용 모델별\nGrowthBook 오버라이드", fillcolor="#C8E6C9"];
+    }
+
+    // ========================================
+    // Conditional Sections
+    // ========================================
+    subgraph cluster_conditional {
+        label="조건부 섹션 (Feature Gate)";
+        style=filled;
+        color="#F3E5F5";
+        fillcolor="#F3E5F5";
+        penwidth=2;
+
+        c1 [label="numeric_length_anchors\n━━━━━━━━━━━━━━\n도구 호출 사이 ≤25단어\n최종 응답 ≤100단어\n[ANT 전용]", fillcolor="#CE93D8"];
+        c2 [label="token_budget\n━━━━━━━━━━━━━━\n사용자 지정 토큰 타겟\n[TOKEN_BUDGET flag]", fillcolor="#CE93D8"];
+        c3 [label="brief\n━━━━━━━━━━━━━━\nBrief 도구 섹션\n[KAIROS / KAIROS_BRIEF]", fillcolor="#CE93D8"];
+    }
+
+    // ========================================
+    // Context Injection
+    // ========================================
+    subgraph cluster_context {
+        label="컨텍스트 주입 (context.ts)";
+        style=filled;
+        color="#FFF3E0";
+        fillcolor="#FFF3E0";
+        penwidth=2;
+
+        ctx_system [label="System Context\n━━━━━━━━━━━━━━\n• gitStatus (브랜치, 상태,\n  최근 커밋 5개, git user)\n  [2000자 제한]\n• cacheBreaker (선택적)", fillcolor="#FFB74D"];
+        ctx_user [label="User Context\n━━━━━━━━━━━━━━\n• claudeMd (CLAUDE.md들)\n  filterInjectedMemoryFiles()\n• currentDate (ISO 형식)", fillcolor="#FFB74D"];
+    }
+
+    // ========================================
+    // Compact Prompt
+    // ========================================
+    subgraph cluster_compact {
+        label="컴팩트 프롬프트 (services/compact/)";
+        style=filled;
+        color="#E0F7FA";
+        fillcolor="#E0F7FA";
+        penwidth=2;
+
+        compact_base [label="BASE_COMPACT_PROMPT\n━━━━━━━━━━━━━━━━━━\n전체 대화 요약\n9개 분석 섹션:\n• Request/Intent\n• Technical Concepts\n• Files/Code\n• Errors/Fixes\n• Problem Solving\n• User Messages\n• Pending Tasks\n• Current Work\n• Next Steps", fillcolor="#4DD0E1"];
+        compact_partial [label="PARTIAL_COMPACT\n━━━━━━━━━━━━━━━━━━\n• direction='from'\n  (최근 메시지만)\n• direction='up_to'\n  (이전 부분, 캐시용)", fillcolor="#80DEEA"];
+        compact_process [label="formatCompactSummary()\n━━━━━━━━━━━━━━━━━━\n<analysis> 블록 제거\n<summary> 태그 언래핑\n도구 호출 완전 금지\n(NO_TOOLS prefix/trailer)", fillcolor="#80DEEA"];
+
+        compact_base -> compact_process;
+        compact_partial -> compact_process;
+    }
+
+    // ========================================
+    // EDGES
+    // ========================================
+
+    // Priority → Prefix
+    priority_normal -> prefix_select [lhead=cluster_prefix, label="프리픽스 선택"];
+
+    // Prefix → Static
+    prefix_select -> s1 [lhead=cluster_static, label="프롬프트 조립 시작", penwidth=2, color="#1565C0"];
+
+    // Static → Boundary → Dynamic
+    s7 -> boundary [penwidth=2, color="#C62828"];
+    boundary -> d1 [lhead=cluster_dynamic, penwidth=2, color="#2E7D32"];
+
+    // Dynamic internal ordering
+    d1 -> d2 -> d3 -> d4 -> d5 [color="#2E7D32"];
+    d5 -> d6 -> d7 -> d8 -> d9 -> d10 [color="#2E7D32"];
+
+    // Conditional → Dynamic (feature gates)
+    c1 -> d10 [style=dashed, color="#7B1FA2", label="ANT일 때"];
+    c2 -> d10 [style=dashed, color="#7B1FA2", label="TOKEN_BUDGET"];
+    c3 -> d10 [style=dashed, color="#7B1FA2", label="KAIROS"];
+
+    // Context injection
+    ctx_system -> conversation_start [penwidth=1.5, color="#E65100"];
+    ctx_user -> conversation_start [penwidth=1.5, color="#E65100"];
+    conversation_start [label="대화 시작\n(시스템 프롬프트 +\n컨텍스트 주입 완료)", shape=doubleoctagon, fillcolor="#FFE0B2"];
+
+    // Final assembly
+    d10 -> conversation_start [label="최종 조립", penwidth=2, color="#2E7D32"];
+    priority_append -> conversation_start [style=dashed, label="append 추가"];
+
+    // Compact triggers from conversation
+    conversation_start -> compact_base [style=dashed, label="컨텍스트 한계 시\n자동 압축", color="#00838F"];
+}

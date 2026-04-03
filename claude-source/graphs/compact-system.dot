@@ -1,0 +1,301 @@
+digraph CompactSystem {
+    // Global settings
+    rankdir=TB;
+    fontname="Malgun Gothic";
+    fontsize=12;
+    node [fontname="Malgun Gothic", fontsize=10, style=filled, shape=box, penwidth=1.2];
+    edge [fontname="Malgun Gothic", fontsize=8, color="#555555"];
+    bgcolor="white";
+    label="Claude Code - Compact/Compaction 시스템 상세";
+    labelloc=t;
+    labeljust=c;
+    fontsize=18;
+    pad=0.5;
+    compound=true;
+    nodesep=0.5;
+    ranksep=0.7;
+
+    // ========================================
+    // Trigger: Token Usage
+    // ========================================
+    token_usage [label="토큰 사용량 증가\n(API 응답마다 추적)", shape=doubleoctagon, fillcolor="#E8EAF6", penwidth=2];
+
+    // ========================================
+    // Thresholds
+    // ========================================
+    subgraph cluster_thresholds {
+        label="토큰 임계값 & 버퍼 상수 (autoCompact.ts)";
+        style=filled;
+        color="#FFF3E0";
+        fillcolor="#FFF3E0";
+        penwidth=2;
+
+        effective_window [label="getEffectiveContextWindowSize(model)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\ncontextWindow - reservedForSummary\n(MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20,000)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nenv override: CLAUDE_CODE_AUTO_COMPACT_WINDOW", fillcolor="#FFB74D"];
+
+        thresholds_table [label=<
+<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+  <TR>
+    <TD BGCOLOR="#FFE0B2"><B>임계값</B></TD>
+    <TD BGCOLOR="#FFE0B2"><B>버퍼</B></TD>
+    <TD BGCOLOR="#FFE0B2"><B>용도</B></TD>
+  </TR>
+  <TR>
+    <TD>Auto Compact</TD>
+    <TD>13,000</TD>
+    <TD>자동 압축 트리거</TD>
+  </TR>
+  <TR>
+    <TD>Warning</TD>
+    <TD>20,000</TD>
+    <TD>사용자 경고 표시</TD>
+  </TR>
+  <TR>
+    <TD>Error</TD>
+    <TD>20,000</TD>
+    <TD>에러 임계값</TD>
+  </TR>
+  <TR>
+    <TD>Manual /compact</TD>
+    <TD>3,000</TD>
+    <TD>수동 압축 차단 한계</TD>
+  </TR>
+  <TR>
+    <TD>Summary Output</TD>
+    <TD>20,000</TD>
+    <TD>요약 출력 예약</TD>
+  </TR>
+</TABLE>
+        >, shape=plaintext];
+
+        threshold_formula [label="autoCompactThreshold 계산\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\neffectiveWindow - 13,000\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nenv override:\nCLAUDE_AUTOCOMPACT_PCT_OVERRIDE\n→ contextWindow * (pct/100)\n→ min(percentage, threshold)", fillcolor="#FFCC80"];
+
+        effective_window -> threshold_formula;
+    }
+
+    // ========================================
+    // shouldAutoCompact Guards
+    // ========================================
+    subgraph cluster_guards {
+        label="shouldAutoCompact() 가드 체인";
+        style=filled;
+        color="#E3F2FD";
+        fillcolor="#E3F2FD";
+        penwidth=2;
+
+        guard1 [label="querySource ≠\n'session_memory'\n'compact'?", shape=diamond, fillcolor="#90CAF9"];
+        guard2 [label="CONTEXT_COLLAPSE일 때\nmarble_origami 아닌가?", shape=diamond, fillcolor="#90CAF9"];
+        guard3 [label="isAutoCompactEnabled()\n━━━━━━━━━━━━━━━━━\nDISABLE_COMPACT?\nDISABLE_AUTO_COMPACT?\nsettings.autoCompactEnabled?", shape=diamond, fillcolor="#90CAF9"];
+        guard4 [label="REACTIVE_COMPACT +\ncobalt_raccoon 아닌가?", shape=diamond, fillcolor="#90CAF9"];
+        guard5 [label="CONTEXT_COLLAPSE\n모드 아닌가?", shape=diamond, fillcolor="#90CAF9"];
+        guard6 [label="tokenCount >=\nautoCompactThreshold?", shape=diamond, fillcolor="#64B5F6"];
+        guard_skip [label="스킵\n(압축 안 함)", fillcolor="#FFCDD2"];
+
+        guard1 -> guard2 [label="Yes"];
+        guard1 -> guard_skip [label="No"];
+        guard2 -> guard3 [label="Yes"];
+        guard2 -> guard_skip [label="No"];
+        guard3 -> guard4 [label="Yes"];
+        guard3 -> guard_skip [label="No"];
+        guard4 -> guard5 [label="Yes"];
+        guard4 -> guard_skip [label="No"];
+        guard5 -> guard6 [label="Yes"];
+        guard5 -> guard_skip [label="No"];
+        guard6 -> guard_skip [label="No"];
+    }
+
+    // ========================================
+    // Auto Compact Orchestration
+    // ========================================
+    subgraph cluster_orchestration {
+        label="autoCompactIfNeeded() 오케스트레이션";
+        style=filled;
+        color="#E8F5E9";
+        fillcolor="#E8F5E9";
+        penwidth=2;
+
+        circuit_breaker [label="서킷 브레이커\n━━━━━━━━━━━━━━━━━━━━━━━━\nconsecutiveFailures >= 3?\n→ Yes: 압축 포기\n(BQ: 50+실패 세션 1,279개\n → ~250K API 호출/일 낭비)", shape=diamond, fillcolor="#A5D6A7"];
+
+        try_session_mem [label="① Session Memory 압축 시도\n(새 경로, 우선)", fillcolor="#66BB6A"];
+        try_legacy [label="② 레거시 compactConversation()\n(폴백)", fillcolor="#81C784"];
+
+        orch_success [label="성공\n━━━━━━━━━━━━━━\nconsecutiveFailures = 0\ntracking 리셋", fillcolor="#C8E6C9"];
+        orch_fail [label="실패\n━━━━━━━━━━━━━━\nconsecutiveFailures++", fillcolor="#FFCDD2"];
+
+        circuit_breaker -> try_session_mem [label="No (진행)"];
+        circuit_breaker -> guard_skip [label="Yes (포기)", style=dashed, color="#C62828"];
+        try_session_mem -> orch_success [label="성공"];
+        try_session_mem -> try_legacy [label="실패/null"];
+        try_legacy -> orch_success [label="성공"];
+        try_legacy -> orch_fail [label="실패"];
+    }
+
+    // ========================================
+    // Session Memory Compaction
+    // ========================================
+    subgraph cluster_sm_compact {
+        label="Session Memory 압축 (sessionMemoryCompact.ts)";
+        style=filled;
+        color="#F3E5F5";
+        fillcolor="#F3E5F5";
+        penwidth=2;
+
+        sm_config [label="SessionMemoryCompactConfig\n━━━━━━━━━━━━━━━━━━━━━━━━\nminTokens: 10,000\nminTextBlockMessages: 5\nmaxTokens: 40,000", fillcolor="#CE93D8"];
+
+        sm_gate [label="shouldUseSessionMemoryCompaction()\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n① ENABLE_CLAUDE_CODE_SM_COMPACT env\n② DISABLE_CLAUDE_CODE_SM_COMPACT env\n③ tengu_session_memory AND\n   tengu_sm_compact 둘 다 활성", shape=diamond, fillcolor="#E1BEE7"];
+
+        sm_keep_algo [label="calculateMessagesToKeepIndex()\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n① lastSummarizedIndex+1부터 시작\n② 토큰 수 & 텍스트 블록 메시지 수 계산\n③ 이미 maxTokens(40K) 이상? → 그대로\n④ minTokens(10K)+minMessages(5) 충족?\n   → 그대로\n⑤ 아니면: 뒤로 확장\n   (minima 충족 or maxTokens 도달까지)\n⑥ 이전 compact 경계 이전으로 불가\n⑦ API 불변식 보존 조정", fillcolor="#CE93D8"];
+
+        sm_invariants [label="adjustIndexToPreserveAPIInvariants()\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n• tool_result 유지 → matching tool_use 포함\n• thinking block → 같은 msg.id 공유\n  assistant 메시지 모두 포함\n• 고아 tool_result/thinking 방지", fillcolor="#D1C4E9", shape=note];
+
+        sm_config -> sm_gate;
+        sm_gate -> sm_keep_algo [label="Yes"];
+        sm_keep_algo -> sm_invariants;
+    }
+
+    // ========================================
+    // Compact Prompts
+    // ========================================
+    subgraph cluster_prompts {
+        label="압축 프롬프트 템플릿 (prompt.ts)";
+        style=filled;
+        color="#E0F7FA";
+        fillcolor="#E0F7FA";
+        penwidth=2;
+
+        no_tools [label="NO_TOOLS_PREAMBLE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\"CRITICAL: TEXT ONLY 응답.\n도구 호출 금지.\nRead, Bash, Grep 등 모든 도구 X\n호출하면 REJECT → 실패.\n<analysis> + <summary> 형태로만\"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nNO_TOOLS_TRAILER:\n\"REMINDER: 도구 호출 금지.\nplain text만. 호출=실패.\"", fillcolor="#4DD0E1", shape=note];
+
+        base_compact [label="BASE_COMPACT_PROMPT\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n전체 대화 요약 (9개 필수 섹션):\n① Primary Request and Intent\n② Key Technical Concepts\n③ Files and Code Sections\n④ Errors and Fixes\n⑤ Problem Solving\n⑥ All User Messages (전부 나열)\n⑦ Pending Tasks\n⑧ Current Work (직전 작업)\n⑨ Optional Next Step", fillcolor="#26C6DA"];
+
+        partial_from [label="PARTIAL_COMPACT (from)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n최근 메시지만 요약\n(이전 컨텍스트 보존 후)\n같은 9개 섹션", fillcolor="#4DD0E1"];
+
+        partial_upto [label="PARTIAL_COMPACT (up_to)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n피벗 이전까지 요약\n(이후 메시지는 원본 유지)\n⑧ → Work Completed\n⑨ → Context for Continuing", fillcolor="#4DD0E1"];
+
+        format_summary [label="formatCompactSummary()\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n① <analysis> 블록 제거\n   (드래프트 스크래치패드, 정보 가치 0)\n② <summary> 내용 추출 & 포매팅\n③ 여분 공백 정리\n④ 헤더 추가", fillcolor="#80DEEA"];
+
+        no_tools -> base_compact [style=dashed, label="wraps"];
+        no_tools -> partial_from [style=dashed, label="wraps"];
+        no_tools -> partial_upto [style=dashed, label="wraps"];
+        base_compact -> format_summary;
+        partial_from -> format_summary;
+        partial_upto -> format_summary;
+    }
+
+    // ========================================
+    // Microcompact
+    // ========================================
+    subgraph cluster_micro {
+        label="마이크로컴팩트 (microCompact.ts)";
+        style=filled;
+        color="#FCE4EC";
+        fillcolor="#FCE4EC";
+        penwidth=2;
+
+        micro_tools [label="COMPACTABLE_TOOLS\n━━━━━━━━━━━━━━━━━━━━━━━━\n결과 제거 가능한 도구:\n• FileRead, FileEdit, FileWrite\n• Bash, PowerShell\n• Grep, Glob\n• WebSearch, WebFetch", fillcolor="#F48FB1"];
+
+        micro_time [label="Time-Based Microcompact\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n트리거: 마지막 assistant 응답 이후\ngapThresholdMinutes (기본 60분)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n동작:\n• 컴팩트 가능 도구 ID 수집\n• 최근 keepRecent(5)개 유지\n• 나머지 결과 직접 제거 (mutation)\n• 캐시 cold → 메시지 직접 변경", fillcolor="#EF9A9A"];
+
+        micro_cached [label="Cached Microcompact (ANT 전용)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n동작:\n• 삭제할 도구 ID 계산\n• cache_edits 블록 생성\n  (메시지 변경 없이 API에 위임)\n• pendingCacheEdits 큐에 추가\n• 메시지 원본 유지 (캐시 warm)", fillcolor="#F48FB1"];
+
+        micro_flow [label="실행 순서\n━━━━━━━━━━━━━━━━━━━━━━━━\n① Time-based 트리거 확인\n   → 발동 시 직접 mutation\n② Cached MC path 시도\n   → cache_edits로 API 위임", fillcolor="#F8BBD0", shape=diamond];
+
+        micro_flow -> micro_time [label="캐시 cold"];
+        micro_flow -> micro_cached [label="캐시 warm"];
+    }
+
+    // ========================================
+    // FRC & Summarize
+    // ========================================
+    subgraph cluster_frc {
+        label="시스템 프롬프트 섹션";
+        style=filled;
+        color="#FFFDE7";
+        fillcolor="#FFFDE7";
+        penwidth=2;
+
+        frc_section [label="Function Result Clearing (FRC)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\"오래된 도구 결과는 공간 확보를 위해\n자동으로 컨텍스트에서 제거됩니다.\n가장 최근 {keepRecent}개 결과는\n항상 유지됩니다.\"\n[CACHED_MICROCOMPACT + 모델 지원 시]", fillcolor="#FFF59D"];
+
+        summarize_section [label="SUMMARIZE_TOOL_RESULTS_SECTION\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\"도구 결과 작업 시, 나중에 필요할\n중요 정보를 응답에 적어두세요.\n원본 도구 결과가 나중에\n제거될 수 있습니다.\"", fillcolor="#FFF59D"];
+    }
+
+    // ========================================
+    // Post-Compact Cleanup
+    // ========================================
+    subgraph cluster_cleanup {
+        label="Post-Compact 정리 (postCompactCleanup.ts)";
+        style=filled;
+        color="#EFEBE9";
+        fillcolor="#EFEBE9";
+        penwidth=2;
+
+        cleanup [label="runPostCompactCleanup()\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n10개 캐시 초기화 (메인 스레드만):\n① microcompact 등록 테이블\n② contextCollapse 모듈 상태\n③ getUserContext 메모이즈 캐시\n④ CLAUDE.md 파일 캐시\n⑤ 시스템 프롬프트 섹션 캐시\n⑥ ML 분류기 승인 상태\n⑦ Bash 권한 추측 검사\n⑧ 베타 세션 트레이싱\n⑨ 파일 내용 어트리뷰션 캐시\n⑩ 세션 메시지 캐시\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n의도적 미초기화:\nsentSkillNames (재주입=캐시낭비)", fillcolor="#D7CCC8"];
+
+        post_constants [label="Post-Compact 상수\n━━━━━━━━━━━━━━━━━━━━━━━━\nMAX_FILES_TO_RESTORE = 5\nTOKEN_BUDGET = 50,000\nMAX_TOKENS_PER_FILE = 5,000\nMAX_TOKENS_PER_SKILL = 5,000\nSKILLS_TOKEN_BUDGET = 25,000\nMAX_STREAMING_RETRIES = 2\nMAX_PTL_RETRIES = 3", fillcolor="#BCAAA4"];
+    }
+
+    // ========================================
+    // Message Grouping
+    // ========================================
+    subgraph cluster_grouping {
+        label="메시지 그룹핑 (grouping.ts)";
+        style=filled;
+        color="#F1F8E9";
+        fillcolor="#F1F8E9";
+        penwidth=2;
+
+        grouping [label="groupMessagesByApiRound()\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nAPI 라운드 경계로 그룹핑:\nassistant의 새 message.id = 새 그룹\n(streaming 청크는 같은 id 공유)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n에이전틱 멀티턴 세션 분리\n(기존: 사용자 턴 기준만)", fillcolor="#AED581"];
+    }
+
+    // ========================================
+    // API Context Editing
+    // ========================================
+    subgraph cluster_api_edit {
+        label="API 레벨 컨텍스트 편집 (apiMicrocompact.ts)";
+        style=filled;
+        color="#E8EAF6";
+        fillcolor="#E8EAF6";
+        penwidth=2;
+
+        api_thinking [label="Thinking 제거 전략\n━━━━━━━━━━━━━━━━━━━━━━━━\nclear_thinking_20251015\n• 일반: 모든 thinking 유지\n• 1시간+ idle: 최근 1턴만 유지", fillcolor="#9FA8DA"];
+
+        api_tool_result [label="Tool Result 제거 전략 (ANT)\n━━━━━━━━━━━━━━━━━━━━━━━━\nclear_tool_uses_20250919\ntrigger: 180,000 input tokens\nkeep: 40,000 target tokens", fillcolor="#C5CAE9"];
+    }
+
+    // ========================================
+    // EDGES
+    // ========================================
+
+    // Token → Thresholds → Guards
+    token_usage -> effective_window [label="모델별\n윈도우 계산", penwidth=2, color="#E65100"];
+    threshold_formula -> guard6 [label="임계값 비교", penwidth=2, color="#1565C0"];
+
+    // Guards → Orchestration
+    guard6 -> circuit_breaker [label="Yes\n(임계 초과)", penwidth=2, color="#2E7D32"];
+
+    // Orchestration → Compaction paths
+    try_session_mem -> sm_gate [label="Session Memory\n경로 시도", penwidth=1.5, color="#7B1FA2"];
+    try_legacy -> base_compact [label="레거시 경로\n프롬프트 사용", penwidth=1.5, color="#00838F", lhead=cluster_prompts];
+
+    // Session Memory flow
+    sm_gate -> sm_keep_algo [label="Yes"];
+    sm_gate -> try_legacy [label="No\n(폴백)", style=dashed];
+
+    // Microcompact (pre-compact, lighter)
+    token_usage -> micro_flow [label="매 턴 확인\n(compact 이전)", style=dashed, color="#C62828"];
+    micro_tools -> micro_time [style=dashed];
+    micro_tools -> micro_cached [style=dashed];
+
+    // Post-compact
+    orch_success -> cleanup [label="압축 성공 후\n캐시 초기화", penwidth=2, color="#4E342E"];
+    cleanup -> post_constants [style=dashed];
+
+    // FRC/Summarize → system prompt
+    frc_section -> micro_cached [style=dashed, color="#F9A825", label="모델에게 알림"];
+    summarize_section -> token_usage [style=dashed, color="#F9A825", label="중요 정보\n미리 적어두기"];
+
+    // Grouping used by compact
+    grouping -> try_legacy [style=dashed, label="그룹 단위 처리"];
+
+    // API editing (separate path)
+    api_thinking -> token_usage [style=dashed, color="#283593", label="API 레벨\n자동 제거"];
+    api_tool_result -> token_usage [style=dashed, color="#283593"];
+}

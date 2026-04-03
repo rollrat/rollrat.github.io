@@ -1,13 +1,13 @@
+import { execSync } from 'child_process';
+import fs from 'fs';
 import { glob } from 'glob';
 import matter from 'gray-matter';
 import { marked } from 'marked';
-import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
-
-// ── Types ──────────────────────────────────────────────────────────────────
 
 type Format = 'SINGLE' | 'BATCH';
+type ClaudeSectionId = 'notes' | 'graphs' | 'drafts';
+type ClaudeKind = 'note' | 'graph' | 'draft';
 
 interface ContentEntry {
   id: string;
@@ -20,13 +20,10 @@ interface ContentEntry {
   html: string;
   markdown?: string;
   summary: string;
-  // SINGLE-specific
   videoId?: string;
   channel?: string;
   duration?: string;
-  // BATCH-specific
   itemCount?: number;
-  // research-specific
   ticker?: string;
   verdict?: string;
 }
@@ -42,21 +39,65 @@ interface Manifest {
   entries: ContentEntry[];
 }
 
-// ── Tab label mapping ────────────────────────────────────────────────────────
+interface ClaudeEntry extends ContentEntry {
+  kind: ClaudeKind;
+  section: ClaudeSectionId;
+  sourcePath: string;
+}
+
+interface ClaudeSectionMeta {
+  id: ClaudeSectionId;
+  label: string;
+  count: number;
+}
+
+interface ClaudeManifest {
+  generatedAt: string;
+  sections: ClaudeSectionMeta[];
+  entries: ClaudeEntry[];
+}
 
 const TAB_LABEL_MAP: Record<string, string> = {
-  youtube: '유튜브 요약',
-  community: '커뮤니티',
-  research: '리서치',
-  daily: '일일 요약',
+  community: 'Community',
+  daily: 'Daily',
+  'dcinside-stocks': 'DC Inside Stocks',
+  'reddit-ai': 'Reddit AI',
+  'reddit-politics-economy': 'Politics & Economy',
   'reddit-saas': 'Reddit SaaS',
+  'reddit-space': 'Reddit Space',
+  'reddit-stocks': 'Reddit Stocks',
+  research: 'Research',
+  youtube: 'YouTube',
 };
+
+const CLAUDE_SECTION_ORDER: ClaudeSectionId[] = ['notes', 'graphs', 'drafts'];
+
+const CLAUDE_SECTION_LABELS: Record<ClaudeSectionId, string> = {
+  drafts: 'Drafts',
+  graphs: 'Graphs',
+  notes: 'Notes',
+};
+
+function normalizePath(value: string): string {
+  return value.replace(/\\/g, '/');
+}
+
+function ensureGeneratedDir(): string {
+  const outDir = path.join(process.cwd(), 'src', 'generated');
+  fs.mkdirSync(outDir, { recursive: true });
+  return outDir;
+}
+
+function writeJsonFile(fileName: string, payload: unknown) {
+  const outDir = ensureGeneratedDir();
+  const outPath = path.join(outDir, fileName);
+  fs.writeFileSync(outPath, JSON.stringify(payload, null, 2));
+  console.log(`Wrote ${fileName}`);
+}
 
 function getTabLabel(folderName: string): string {
   return TAB_LABEL_MAP[folderName] ?? folderName;
 }
-
-// ── Helpers ────────────────────────────────────────────────────────────────
 
 function getGitAddedTimestamp(filePath: string): number {
   try {
@@ -64,57 +105,61 @@ function getGitAddedTimestamp(filePath: string): number {
       `git log --diff-filter=A --format="%ct" -- "${filePath}"`,
       { encoding: 'utf-8' }
     ).trim();
-    const ts = parseInt(result.split('\n')[0], 10);
-    return isNaN(ts) ? 0 : ts;
+
+    const ts = Number.parseInt(result.split('\n')[0] ?? '', 10);
+    return Number.isNaN(ts) ? 0 : ts;
   } catch {
     return 0;
   }
 }
 
 function normalizeDate(value: unknown): string {
-  if (!value) return '';
+  if (!value) {
+    return '';
+  }
+
   if (value instanceof Date) {
     return value.toISOString().slice(0, 10);
   }
+
   return String(value);
 }
 
-function slugify(filePath: string): string {
-  return filePath
-    .replace(/[/\\]/g, '-')
-    .replace(/\.md$/, '')
-    .replace(/[^a-zA-Z0-9가-힣_-]/g, '-')
+function slugify(input: string): string {
+  return normalizePath(input)
+    .replace(/\.(md|dot)$/i, '')
+    .replace(/[^\p{Letter}\p{Number}_-]+/gu, '-')
     .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
+    .replace(/^-|-$/g, '')
+    .toLowerCase();
 }
 
 function tabFromPath(filePath: string, contentDir: string): string {
-  const relative = path.relative(contentDir, filePath).replace(/\\/g, '/');
-  const parts = relative.split('/');
-  return parts[0];
+  const relative = normalizePath(path.relative(contentDir, filePath));
+  return relative.split('/')[0] ?? '';
 }
 
 function subgroupFromPath(filePath: string, contentDir: string): string | undefined {
-  const relative = path.relative(contentDir, filePath).replace(/\\/g, '/');
+  const relative = normalizePath(path.relative(contentDir, filePath));
   const parts = relative.split('/');
-  // parts[0] = tab, parts[1] = subgroup or file, parts[2] = file (if subgroup exists)
+
   if (parts.length >= 3) {
     return parts[1];
   }
+
   return undefined;
 }
 
 function transformWikiLinks(html: string): string {
-  // [[file|display]] or [[file]]
-  return html.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_match, _file, display) => {
-    const label = display ?? _file;
+  return html.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_match, fileName, display) => {
+    const label = display ?? fileName;
     return `<span class="wiki-link">${label}</span>`;
   });
 }
 
 function extractSummary(text: string, maxLen = 160): string {
-  // Strip markdown, take first meaningful paragraph
   const clean = text
+    .replace(/^---[\s\S]*?---\s*/m, '')
     .replace(/^#{1,6}\s+.*/gm, '')
     .replace(/!\[.*?\]\(.*?\)/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
@@ -122,159 +167,305 @@ function extractSummary(text: string, maxLen = 160): string {
     .replace(/^[-*>]\s+/gm, '')
     .replace(/\n{2,}/g, '\n')
     .trim();
-  const first = clean.split('\n').find(l => l.trim().length > 20) ?? clean;
-  return first.length > maxLen ? first.slice(0, maxLen - 1) + '…' : first;
+
+  const firstMeaningfulLine = clean
+    .split('\n')
+    .map(line => line.trim())
+    .find(line => line.length > 20) ?? clean;
+
+  if (firstMeaningfulLine.length <= maxLen) {
+    return firstMeaningfulLine;
+  }
+
+  return `${firstMeaningfulLine.slice(0, maxLen - 1)}…`;
 }
 
-// Count ## sections in BATCH file
 function countBatchItems(body: string): number {
   return (body.match(/^##\s+/gm) ?? []).length;
 }
 
-async function processFile(filePath: string, contentDir: string): Promise<ContentEntry | null> {
+function extractHeading(markdown: string): string | null {
+  const match = markdown.match(/^#\s+(.+)$/m);
+  return match ? match[1].trim() : null;
+}
+
+function prettifyName(name: string): string {
+  return name
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+async function renderMarkdown(markdown: string): Promise<string> {
+  const html = await marked.parse(markdown, { gfm: true });
+  return transformWikiLinks(String(html));
+}
+
+async function processContentFile(filePath: string, contentDir: string): Promise<ContentEntry | null> {
   const raw = fs.readFileSync(filePath, 'utf-8');
   const tab = tabFromPath(filePath, contentDir);
   const subgroup = subgroupFromPath(filePath, contentDir);
   const id = slugify(path.relative(contentDir, filePath));
 
-  // Detect format
   const hasFrontmatterTitle = /^---[\s\S]+?title:/.test(raw);
   const hasSeparator = /\n---\n/.test(raw);
   const format: Format = hasFrontmatterTitle ? 'SINGLE' : 'BATCH';
 
-  const { data: fm, content: body } = matter(raw);
+  const { content: body, data: frontmatter } = matter(raw);
 
-  // ── SINGLE ─────────────────────────────────────────────────────────────
   if (format === 'SINGLE') {
-    const htmlRaw = await marked(body, { gfm: true });
-    const html = transformWikiLinks(htmlRaw);
-
     return {
+      channel: frontmatter.channel ? String(frontmatter.channel) : undefined,
+      date: normalizeDate(frontmatter.upload_date ?? frontmatter.date),
+      duration: frontmatter.duration ? String(frontmatter.duration) : undefined,
+      html: await renderMarkdown(body),
       id,
-      tab,
-      subgroup,
-      type: 'SINGLE',
-      title: String(fm.title ?? path.basename(filePath, '.md')),
-      date: normalizeDate(fm.upload_date ?? fm.date),
-      tags: Array.isArray(fm.tags) ? fm.tags.map(String) : [],
-      html,
       markdown: body,
+      subgroup,
       summary: extractSummary(body),
-      videoId: fm.video_id ? String(fm.video_id) : undefined,
-      channel: fm.channel ? String(fm.channel) : undefined,
-      duration: fm.duration ? String(fm.duration) : undefined,
-      ticker: fm.ticker ? String(fm.ticker) : undefined,
-      verdict: fm.verdict ? String(fm.verdict) : undefined,
+      tab,
+      tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : [],
+      ticker: frontmatter.ticker ? String(frontmatter.ticker) : undefined,
+      title: String(frontmatter.title ?? path.basename(filePath, '.md')),
+      type: 'SINGLE',
+      verdict: frontmatter.verdict ? String(frontmatter.verdict) : undefined,
+      videoId: frontmatter.video_id ? String(frontmatter.video_id) : undefined,
     };
   }
 
-  // ── BATCH ──────────────────────────────────────────────────────────────
-  // Extract title from first H1 line
-  const h1Match = body.match(/^#\s+(.+)/m);
-  const title = h1Match ? h1Match[1].trim() : path.basename(filePath, '.md');
-
-  // Extract date from title pattern like "26.02.09 ~ 02.14" or frontmatter
+  const title = extractHeading(body) ?? path.basename(filePath, '.md');
   const dateMatch = title.match(/(\d{2}\.\d{2}\.\d{2})/);
-  const date = fm.date
-    ? normalizeDate(fm.date)
+  const date = frontmatter.date
+    ? normalizeDate(frontmatter.date)
     : dateMatch
-    ? '20' + dateMatch[1].replace(/\./g, '-')
-    : '';
-
-  const htmlRaw = await marked(body, { gfm: true });
-  const html = transformWikiLinks(htmlRaw);
+      ? `20${dateMatch[1].replace(/\./g, '-')}`
+      : '';
 
   return {
-    id,
-    tab,
-    subgroup,
-    type: 'BATCH',
-    title,
+    channel: frontmatter.channel ? String(frontmatter.channel) : undefined,
     date,
-    tags: Array.isArray(fm.tags) ? fm.tags.map(String) : [],
-    html,
-    markdown: body,
-    summary: extractSummary(body),
+    html: await renderMarkdown(body),
+    id,
     itemCount: hasSeparator ? countBatchItems(body) : 1,
-    channel: fm.channel ? String(fm.channel) : undefined,
+    markdown: body,
+    subgroup,
+    summary: extractSummary(body),
+    tab,
+    tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : [],
+    title,
+    type: 'BATCH',
   };
 }
 
-// ── Main ───────────────────────────────────────────────────────────────────
-
-async function main() {
+async function buildContentManifest(): Promise<Manifest> {
   const contentDir = path.join(process.cwd(), 'content');
+
   if (!fs.existsSync(contentDir)) {
-    console.log('content/ directory not found, creating empty manifest');
-    const outDir = path.join(process.cwd(), 'src', 'generated');
-    fs.mkdirSync(outDir, { recursive: true });
-    const emptyManifest: Manifest = { tabs: [], entries: [] };
-    fs.writeFileSync(path.join(outDir, 'content-manifest.json'), JSON.stringify(emptyManifest, null, 2));
-    return;
+    console.log('content/ directory not found, creating empty content manifest');
+    return { entries: [], tabs: [] };
   }
 
-  const files = await glob('**/*.md', { cwd: contentDir, absolute: true });
-  console.log(`Found ${files.length} markdown files`);
-
+  const files = await glob('**/*.md', { absolute: true, cwd: contentDir });
   const entries: ContentEntry[] = [];
   const addedTimes = new Map<string, number>();
 
-  for (const f of files) {
+  for (const filePath of files) {
     try {
-      const entry = await processFile(f, contentDir);
+      const entry = await processContentFile(filePath, contentDir);
       if (entry) {
-        addedTimes.set(entry.id, getGitAddedTimestamp(f));
         entries.push(entry);
+        addedTimes.set(entry.id, getGitAddedTimestamp(filePath));
       }
-    } catch (err) {
-      console.error(`Error processing ${f}:`, err);
+    } catch (error) {
+      console.error(`Error processing ${filePath}:`, error);
     }
   }
 
-  // Sort by git-added time descending (newest first), fallback to date
-  entries.sort((a, b) => {
-    const aTime = addedTimes.get(a.id) ?? 0;
-    const bTime = addedTimes.get(b.id) ?? 0;
-    if (aTime || bTime) return bTime - aTime;
-    if (b.date && a.date) return b.date.localeCompare(a.date);
-    return a.title.localeCompare(b.title);
+  entries.sort((left, right) => {
+    const leftAdded = addedTimes.get(left.id) ?? 0;
+    const rightAdded = addedTimes.get(right.id) ?? 0;
+
+    if (leftAdded || rightAdded) {
+      return rightAdded - leftAdded;
+    }
+
+    if (left.date && right.date) {
+      return right.date.localeCompare(left.date);
+    }
+
+    return left.title.localeCompare(right.title);
   });
 
-  // Build tab metadata by scanning top-level directories
   const topLevelDirs = fs.readdirSync(contentDir, { withFileTypes: true })
-    .filter(d => d.isDirectory())
-    .map(d => d.name);
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name);
 
-  const tabs: TabMeta[] = topLevelDirs.map(dirName => {
-    const dirPath = path.join(contentDir, dirName);
-    const items = fs.readdirSync(dirPath, { withFileTypes: true });
-    const hasFiles = items.some(item => item.isFile() && item.name.endsWith('.md'));
-    const hasSubDirs = items.some(item => item.isDirectory());
-    // hasSubgroups = only subdirectories (no top-level .md files)
-    const hasSubgroups = hasSubDirs && !hasFiles;
+  const tabs: TabMeta[] = topLevelDirs
+    .map(dirName => {
+      const dirPath = path.join(contentDir, dirName);
+      const items = fs.readdirSync(dirPath, { withFileTypes: true });
+      const hasFiles = items.some(item => item.isFile() && item.name.endsWith('.md'));
+      const hasSubDirs = items.some(item => item.isDirectory());
 
-    return {
-      id: dirName,
-      label: getTabLabel(dirName),
-      hasSubgroups,
-    };
-  }).sort((a, b) => {
-    const countA = entries.filter(e => e.tab === a.id).length;
-    const countB = entries.filter(e => e.tab === b.id).length;
-    return countB - countA;
-  });
+      return {
+        hasSubgroups: hasSubDirs && !hasFiles,
+        id: dirName,
+        label: getTabLabel(dirName),
+      };
+    })
+    .sort((left, right) => {
+      const leftCount = entries.filter(entry => entry.tab === left.id).length;
+      const rightCount = entries.filter(entry => entry.tab === right.id).length;
+      return rightCount - leftCount;
+    });
 
-  const manifest: Manifest = { tabs, entries };
-
-  const outDir = path.join(process.cwd(), 'src', 'generated');
-  fs.mkdirSync(outDir, { recursive: true });
-  const outPath = path.join(outDir, 'content-manifest.json');
-  fs.writeFileSync(outPath, JSON.stringify(manifest, null, 2));
-  console.log(`Wrote ${entries.length} entries to ${outPath}`);
-  console.log(`Tabs: ${tabs.map(t => `${t.id}(hasSubgroups=${t.hasSubgroups})`).join(', ')}`);
+  return { entries, tabs };
 }
 
-main().catch(err => {
-  console.error(err);
+async function processClaudeFile(filePath: string, claudeDir: string): Promise<ClaudeEntry | null> {
+  const relative = normalizePath(path.relative(claudeDir, filePath));
+  const [section] = relative.split('/');
+
+  if (!section || !CLAUDE_SECTION_ORDER.includes(section as ClaudeSectionId)) {
+    return null;
+  }
+
+  const sectionId = section as ClaudeSectionId;
+  const sectionLabel = CLAUDE_SECTION_LABELS[sectionId];
+  const ext = path.extname(filePath).toLowerCase();
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  const stats = fs.statSync(filePath);
+  const id = slugify(relative);
+
+  if (ext === '.md') {
+    const { content: body, data: frontmatter } = matter(raw);
+    const title = String(frontmatter.title ?? extractHeading(body) ?? prettifyName(path.basename(filePath, '.md')));
+    const tags = Array.from(new Set([
+      'claude',
+      'analysis',
+      sectionId,
+      ...(Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : []),
+    ]));
+
+    return {
+      channel: `CLAUDE / ${sectionLabel.toUpperCase()}`,
+      date: normalizeDate(frontmatter.date ?? stats.mtime.toISOString().slice(0, 10)),
+      html: await renderMarkdown(body),
+      id,
+      kind: 'note',
+      markdown: body,
+      section: sectionId,
+      sourcePath: relative,
+      summary: extractSummary(body),
+      tab: 'claude',
+      tags,
+      title,
+      type: 'SINGLE',
+    };
+  }
+
+  if (ext === '.dot') {
+    const title = prettifyName(path.basename(filePath, '.dot'));
+    const displayMarkdown = [
+      '> Graphviz DOT source copied from the local Claude analysis workspace.',
+      '',
+      `> Source: \`${relative}\``,
+      '',
+      '```dot',
+      raw.trimEnd(),
+      '```',
+    ].join('\n');
+
+    const kind: ClaudeKind = sectionId === 'drafts' ? 'draft' : 'graph';
+    const tagName = sectionId === 'drafts' ? 'draft' : 'graph';
+
+    return {
+      channel: `CLAUDE / ${sectionLabel.toUpperCase()}`,
+      date: stats.mtime.toISOString().slice(0, 10),
+      html: await renderMarkdown(displayMarkdown),
+      id,
+      kind,
+      markdown: raw,
+      section: sectionId,
+      sourcePath: relative,
+      summary: `${kind === 'draft' ? 'Draft' : 'Graphviz'} DOT source for ${title}.`,
+      tab: 'claude',
+      tags: ['claude', 'analysis', sectionId, tagName],
+      title,
+      type: 'SINGLE',
+    };
+  }
+
+  return null;
+}
+
+async function buildClaudeManifest(): Promise<ClaudeManifest> {
+  const claudeDir = path.join(process.cwd(), 'claude-source');
+
+  if (!fs.existsSync(claudeDir)) {
+    console.log('claude-source/ directory not found, creating empty Claude manifest');
+    return {
+      entries: [],
+      generatedAt: new Date().toISOString(),
+      sections: [],
+    };
+  }
+
+  const files = await glob('**/*.{md,dot}', { absolute: true, cwd: claudeDir });
+  const entries: ClaudeEntry[] = [];
+
+  for (const filePath of files) {
+    try {
+      const entry = await processClaudeFile(filePath, claudeDir);
+      if (entry) {
+        entries.push(entry);
+      }
+    } catch (error) {
+      console.error(`Error processing Claude source ${filePath}:`, error);
+    }
+  }
+
+  entries.sort((left, right) => {
+    const sectionOrder = CLAUDE_SECTION_ORDER.indexOf(left.section) - CLAUDE_SECTION_ORDER.indexOf(right.section);
+    if (sectionOrder !== 0) {
+      return sectionOrder;
+    }
+
+    if (left.date && right.date && left.date !== right.date) {
+      return right.date.localeCompare(left.date);
+    }
+
+    return left.title.localeCompare(right.title);
+  });
+
+  const sections = CLAUDE_SECTION_ORDER
+    .map(sectionId => ({
+      count: entries.filter(entry => entry.section === sectionId).length,
+      id: sectionId,
+      label: CLAUDE_SECTION_LABELS[sectionId],
+    }))
+    .filter(section => section.count > 0);
+
+  return {
+    entries,
+    generatedAt: new Date().toISOString(),
+    sections,
+  };
+}
+
+async function main() {
+  const contentManifest = await buildContentManifest();
+  const claudeManifest = await buildClaudeManifest();
+
+  writeJsonFile('content-manifest.json', contentManifest);
+  writeJsonFile('claude-manifest.json', claudeManifest);
+
+  console.log(`Content tabs: ${contentManifest.tabs.map(tab => tab.id).join(', ')}`);
+  console.log(`Claude entries: ${claudeManifest.entries.length}`);
+}
+
+main().catch(error => {
+  console.error(error);
   process.exit(1);
 });

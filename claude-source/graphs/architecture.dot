@@ -1,0 +1,311 @@
+digraph ClaudeCodeArchitecture {
+    // Global settings
+    rankdir=TB;
+    fontname="Helvetica";
+    fontsize=12;
+    node [fontname="Helvetica", fontsize=10, style=filled, shape=box, penwidth=1.2];
+    edge [fontname="Helvetica", fontsize=8, color="#555555"];
+    bgcolor="white";
+    label="Claude Code - Source Architecture";
+    labelloc=t;
+    labeljust=c;
+    fontsize=18;
+    pad=0.5;
+
+    // ========================================
+    // Cluster: Entry Points
+    // ========================================
+    subgraph cluster_entry {
+        label="Entry Points";
+        style=filled;
+        color="#E8F5E9";
+        fillcolor="#E8F5E9";
+
+        cli_tsx [label="cli.tsx\n(CLI Bootstrap)", fillcolor="#81C784"];
+        main_tsx [label="main.tsx\n(App Loader, 800KB+)", fillcolor="#66BB6A"];
+        init_ts [label="init.ts\n(Initialization)", fillcolor="#81C784"];
+        mcp_entry [label="mcp.ts\n(MCP Server Mode)", fillcolor="#A5D6A7"];
+        sdk_entry [label="sdk/\n(SDK/Agent Mode)", fillcolor="#A5D6A7"];
+    }
+
+    // ========================================
+    // Cluster: Core Engine
+    // ========================================
+    subgraph cluster_core {
+        label="Core Engine";
+        style=filled;
+        color="#E3F2FD";
+        fillcolor="#E3F2FD";
+
+        query_ts [label="query.ts\n(Query Execution Loop)", fillcolor="#64B5F6"];
+        query_engine [label="QueryEngine.ts\n(Token Budget, Retry)", fillcolor="#64B5F6"];
+        query_mod [label="query/\n(Config, Deps, Budget)", fillcolor="#90CAF9"];
+    }
+
+    // ========================================
+    // Cluster: State Management
+    // ========================================
+    subgraph cluster_state {
+        label="State Management";
+        style=filled;
+        color="#FFF3E0";
+        fillcolor="#FFF3E0";
+
+        app_state [label="state/AppState.tsx\n(React Context)", fillcolor="#FFB74D"];
+        app_store [label="state/AppStateStore.ts\n(Zustand-like Store)", fillcolor="#FFB74D"];
+        bootstrap [label="bootstrap/state.ts\n(Runtime Flags)", fillcolor="#FFCC80"];
+        context_providers [label="context/\n(React Contexts:\nMailbox, Voice,\nModal, Overlay)", fillcolor="#FFCC80"];
+    }
+
+    // ========================================
+    // Cluster: Tool System
+    // ========================================
+    subgraph cluster_tools {
+        label="Tool System (44 Tools)";
+        style=filled;
+        color="#FCE4EC";
+        fillcolor="#FCE4EC";
+
+        tool_ts [label="Tool.ts\n(Interface & Types)", fillcolor="#F48FB1"];
+        tools_registry [label="tools.ts\n(Registry & Factory)", fillcolor="#F48FB1"];
+
+        subgraph cluster_tool_impl {
+            label="Implementations";
+            style=dashed;
+            color="#F8BBD0";
+            fillcolor="#F8BBD0";
+
+            tool_file [label="File Tools\nRead/Write/Edit/Glob", fillcolor="#F48FB1"];
+            tool_code [label="Code Tools\nLSP/Grep/Skill", fillcolor="#F48FB1"];
+            tool_sys [label="System Tools\nBash/PowerShell/REPL", fillcolor="#F48FB1"];
+            tool_agent [label="Agent Tools\nAgent/Task*/SendMsg", fillcolor="#F48FB1"];
+            tool_integ [label="Integration Tools\nMCP/WebSearch/WebFetch", fillcolor="#F48FB1"];
+        }
+    }
+
+    // ========================================
+    // Cluster: Commands
+    // ========================================
+    subgraph cluster_commands {
+        label="CLI Commands (50+)";
+        style=filled;
+        color="#F3E5F5";
+        fillcolor="#F3E5F5";
+
+        commands_ts [label="commands.ts\n(Registry)", fillcolor="#CE93D8"];
+        cmd_core [label="Core\ninit/login/logout/help", fillcolor="#E1BEE7"];
+        cmd_session [label="Session\nresume/teleport", fillcolor="#E1BEE7"];
+        cmd_git [label="Git/PR\ncommit/review/autofix-pr", fillcolor="#E1BEE7"];
+        cmd_config [label="Config\nconfig/keybindings/theme", fillcolor="#E1BEE7"];
+        cmd_mcp [label="MCP/Plugins\nmcp/agents-platform/skills", fillcolor="#E1BEE7"];
+    }
+
+    // ========================================
+    // Cluster: Services
+    // ========================================
+    subgraph cluster_services {
+        label="Services Layer (20+)";
+        style=filled;
+        color="#E0F7FA";
+        fillcolor="#E0F7FA";
+
+        svc_api [label="api/\n(Anthropic API Client)", fillcolor="#4DD0E1"];
+        svc_oauth [label="oauth/\n(Authentication)", fillcolor="#80DEEA"];
+        svc_mcp [label="mcp/\n(MCP Client &\nServer Registry)", fillcolor="#80DEEA"];
+        svc_compact [label="compact/\n(Message Compaction)", fillcolor="#80DEEA"];
+        svc_memory [label="SessionMemory/\nextractMemories/\n(Memory System)", fillcolor="#80DEEA"];
+        svc_analytics [label="analytics/\n(GrowthBook,\nFeature Flags)", fillcolor="#80DEEA"];
+        svc_lsp [label="lsp/\n(Language Server)", fillcolor="#80DEEA"];
+        svc_plugins [label="plugins/tools/\n(Plugin Management)", fillcolor="#80DEEA"];
+    }
+
+    // ========================================
+    // Cluster: UI System
+    // ========================================
+    subgraph cluster_ui {
+        label="UI System";
+        style=filled;
+        color="#FFFDE7";
+        fillcolor="#FFFDE7";
+
+        ink_framework [label="ink/\n(Terminal UI Framework)\nBox, Text, Button, Spinner", fillcolor="#FFF176"];
+        components [label="components/\n(100+ React Components)\nDesign System, Dialogs,\nMessages, Permissions", fillcolor="#FFF59D"];
+        screens [label="screens/\n(Doctor, REPL,\nResumeConversation)", fillcolor="#FFF59D"];
+        hooks [label="hooks/\n(50+ React Hooks)\nPermission, State,\nUI, Keyboard", fillcolor="#FFF59D"];
+        dialog_launchers [label="dialogLaunchers.tsx\n(Modal Factory)", fillcolor="#FFF59D"];
+    }
+
+    // ========================================
+    // Cluster: Task System
+    // ========================================
+    subgraph cluster_tasks {
+        label="Task System";
+        style=filled;
+        color="#EDE7F6";
+        fillcolor="#EDE7F6";
+
+        task_ts [label="Task.ts\n(Definition & Factory)", fillcolor="#B39DDB"];
+        task_local_main [label="LocalMainSessionTask", fillcolor="#D1C4E9"];
+        task_agent [label="LocalAgentTask", fillcolor="#D1C4E9"];
+        task_shell [label="LocalShellTask", fillcolor="#D1C4E9"];
+        task_remote [label="RemoteAgentTask", fillcolor="#D1C4E9"];
+        task_teammate [label="InProcessTeammateTask", fillcolor="#D1C4E9"];
+        task_dream [label="DreamTask", fillcolor="#D1C4E9"];
+    }
+
+    // ========================================
+    // Cluster: Remote & Bridge
+    // ========================================
+    subgraph cluster_remote {
+        label="Remote & Bridge";
+        style=filled;
+        color="#EFEBE9";
+        fillcolor="#EFEBE9";
+
+        bridge [label="bridge/\n(Remote Code Execution)\nMessaging, API, UI", fillcolor="#BCAAA4"];
+        remote [label="remote/\n(Session Manager,\nWebSocket, SDK Adapter)", fillcolor="#BCAAA4"];
+        server [label="server/\n(Direct Connect)", fillcolor="#BCAAA4"];
+        proxy [label="upstreamproxy/\n(Proxy & Relay)", fillcolor="#BCAAA4"];
+    }
+
+    // ========================================
+    // Cluster: Extension Systems
+    // ========================================
+    subgraph cluster_extensions {
+        label="Extension Systems";
+        style=filled;
+        color="#F1F8E9";
+        fillcolor="#F1F8E9";
+
+        skills [label="skills/\n(Bundled Skills,\nSkill Loader,\nMCP Skill Builders)", fillcolor="#AED581"];
+        plugins [label="plugins/\n(Bundled Plugins,\nPlugin Registry)", fillcolor="#AED581"];
+        memdir [label="memdir/\n(Persistent Memory,\nRelevance Search)", fillcolor="#AED581"];
+    }
+
+    // ========================================
+    // Cluster: Utilities & Support
+    // ========================================
+    subgraph cluster_utils {
+        label="Utilities & Support";
+        style=filled;
+        color="#F5F5F5";
+        fillcolor="#F5F5F5";
+
+        utils [label="utils/ (298 files)\nGit, Auth, API, Shell,\nPerformance, Telemetry,\nPermissions, Settings", fillcolor="#E0E0E0"];
+        types [label="types/\n(TypeScript Definitions)", fillcolor="#E0E0E0"];
+        constants [label="constants/\n(API Limits, Messages,\nOAuth, Product)", fillcolor="#E0E0E0"];
+        keybindings [label="keybindings/\n(Keybinding System)", fillcolor="#E0E0E0"];
+        vim [label="vim/\n(Vim Mode Support)", fillcolor="#E0E0E0"];
+        migrations [label="migrations/\n(11 Data Migrations)", fillcolor="#E0E0E0"];
+        native_ts [label="native-ts/\n(Color Diff, File Index,\nYoga Layout)", fillcolor="#E0E0E0"];
+    }
+
+    // ========================================
+    // EDGES: Startup Flow
+    // ========================================
+    cli_tsx -> main_tsx [label="load", penwidth=2, color="#2E7D32"];
+    main_tsx -> init_ts [label="init", penwidth=2, color="#2E7D32"];
+    cli_tsx -> mcp_entry [label="MCP mode", style=dashed];
+    cli_tsx -> sdk_entry [label="SDK mode", style=dashed];
+
+    // ========================================
+    // EDGES: Main → Core Systems
+    // ========================================
+    main_tsx -> app_state [label="create state", penwidth=1.5, color="#E65100"];
+    main_tsx -> query_engine [label="create engine", penwidth=1.5, color="#1565C0"];
+    main_tsx -> tools_registry [label="register tools", penwidth=1.5, color="#C62828"];
+    main_tsx -> commands_ts [label="register cmds", penwidth=1.5, color="#6A1B9A"];
+    main_tsx -> ink_framework [label="render UI", penwidth=1.5, color="#F9A825"];
+
+    init_ts -> svc_oauth [label="auth"];
+    init_ts -> svc_mcp [label="MCP init"];
+    init_ts -> svc_lsp [label="LSP init"];
+    init_ts -> svc_analytics [label="telemetry"];
+
+    // ========================================
+    // EDGES: Core Engine Relations
+    // ========================================
+    query_ts -> query_engine [dir=both, label="orchestrate"];
+    query_engine -> query_mod;
+    query_engine -> svc_api [label="API calls", color="#00838F"];
+    query_engine -> svc_compact [label="auto-compact"];
+    query_engine -> tool_ts [label="execute tools", color="#AD1457"];
+    query_ts -> app_state [label="read/write state"];
+
+    // ========================================
+    // EDGES: State Relations
+    // ========================================
+    app_state -> app_store;
+    app_state -> context_providers;
+    bootstrap -> app_state [style=dashed];
+
+    // ========================================
+    // EDGES: Tool System
+    // ========================================
+    tools_registry -> tool_ts;
+    tool_ts -> tool_file;
+    tool_ts -> tool_code;
+    tool_ts -> tool_sys;
+    tool_ts -> tool_agent;
+    tool_ts -> tool_integ;
+
+    tool_agent -> task_ts [label="spawn tasks", color="#4527A0"];
+    tool_integ -> svc_mcp [label="MCP bridge"];
+    tool_code -> svc_lsp [label="LSP queries"];
+
+    // ========================================
+    // EDGES: Commands
+    // ========================================
+    commands_ts -> cmd_core;
+    commands_ts -> cmd_session;
+    commands_ts -> cmd_git;
+    commands_ts -> cmd_config;
+    commands_ts -> cmd_mcp;
+
+    // ========================================
+    // EDGES: UI System
+    // ========================================
+    components -> ink_framework;
+    screens -> ink_framework;
+    hooks -> app_state [label="state access"];
+    hooks -> components [label="used by"];
+    dialog_launchers -> components [label="create dialogs"];
+    components -> context_providers [label="consume contexts"];
+
+    // ========================================
+    // EDGES: Task System
+    // ========================================
+    task_ts -> task_local_main;
+    task_ts -> task_agent;
+    task_ts -> task_shell;
+    task_ts -> task_remote;
+    task_ts -> task_teammate;
+    task_ts -> task_dream;
+    task_remote -> bridge [label="remote exec", color="#5D4037"];
+    task_remote -> remote [label="session mgmt"];
+
+    // ========================================
+    // EDGES: Remote & Bridge
+    // ========================================
+    bridge -> remote [dir=both];
+    remote -> server;
+    bridge -> proxy [label="relay"];
+
+    // ========================================
+    // EDGES: Extensions
+    // ========================================
+    skills -> tools_registry [label="register as tools", style=dashed];
+    plugins -> tools_registry [label="extend tools", style=dashed];
+    memdir -> svc_memory [label="persistence"];
+
+    // ========================================
+    // EDGES: Utils (shared dependency)
+    // ========================================
+    utils -> svc_api [style=dotted, color="#9E9E9E"];
+    utils -> tool_ts [style=dotted, color="#9E9E9E"];
+    constants -> query_engine [style=dotted, color="#9E9E9E"];
+    types -> tool_ts [style=dotted, color="#9E9E9E"];
+    keybindings -> hooks [style=dotted, color="#9E9E9E"];
+    vim -> keybindings [style=dotted, color="#9E9E9E"];
+    native_ts -> ink_framework [style=dotted, label="yoga layout", color="#9E9E9E"];
+}
