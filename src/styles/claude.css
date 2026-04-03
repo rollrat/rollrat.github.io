@@ -408,7 +408,7 @@
 }
 
 .claude-graph-canvas {
-  min-height: 640px;
+  min-height: 960px;
   overflow: auto;
   padding: 24px;
   background:
@@ -560,7 +560,7 @@
   }
 
   .claude-graph-canvas {
-    min-height: 420px;
+    min-height: 560px;
     padding: 12px;
   }
 
